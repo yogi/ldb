@@ -4,10 +4,10 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Perf {
+public class FilePerf {
     private static final int ITERATIONS = 5;
     private static final double MEG = (Math.pow(1024, 2));
-    private static final int RECORD_COUNT = 40000000;
+    private static final int RECORD_COUNT = 4000000;
     private static final String RECORD = "Help I am trapped in a fortune cookie factory\n";
     private static final int RECSIZE = RECORD.getBytes().length;
 
@@ -61,6 +61,7 @@ public class Perf {
         long start = System.currentTimeMillis();
         for (String record : records) {
             writer.write(record);
+            //writer.flush();
         }
         // writer.flush(); // close() should take care of this
         writer.close();

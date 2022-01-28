@@ -1,29 +1,57 @@
 package app;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.jar.Attributes;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class WriteAheadLog {
-    private final String dir;
+    final int gen;
+    final String dir;
     private final DataOutputStream os;
     private final LinkedBlockingQueue<Object> queue;
     private final Thread writerThread;
-    private final AtomicBoolean exiting = new AtomicBoolean(false);
+    private final AtomicBoolean stop = new AtomicBoolean(false);
+    private final AtomicInteger count = new AtomicInteger();
+
+    public WriteAheadLog(String dir) {
+        this(dir, lastGeneration(dir));
+    }
+
+    private static int lastGeneration(String dir) {
+        File[] wals = new File(dir).listFiles((dir1, name) -> name.startsWith("wal"));
+        if (wals != null && wals.length > 1) {
+            throw new IllegalStateException("more than one wal found");
+        }
+        if (wals == null || wals.length == 0) {
+            return 0;
+        }
+        return Integer.parseInt(wals[0].getName().replace("wal", ""));
+    }
+
+    public int count() {
+        return count.get();
+    }
+
+    public void stop() {
+        stop.set(true);
+    }
+
+    public void delete() {
+        File file = new File(walFileName());
+        if (file.exists()) {
+            file.delete();
+        }
+    }
 
     private enum CmdType {
         Set,
     }
 
-    private enum CompressionType {
-        None
-    }
+    public WriteAheadLog(String dir, int gen) {
+        this.gen = gen;
 
-    public WriteAheadLog(String dir) {
         this.queue = new LinkedBlockingQueue<>(1000);
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -31,11 +59,10 @@ public class WriteAheadLog {
             public void run() {
                 try {
                     System.out.println("shutdown hook cleaning up");
-                    exiting.set(true);
+                    WriteAheadLog.this.stop();
                     writerThread.interrupt();
-                    os.flush();
                     os.close();
-                    System.out.println("shutdown hook cleaning up... done");
+                    System.out.printf("shutdown hook cleaning up... done, records written: %d, flushes: %d\n", KeyValueEntry.getRecordsWritten(), KeyValueEntry.getFlushCount());
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -56,13 +83,15 @@ public class WriteAheadLog {
             int count = 0;
             int errors = 0;
             while (true) {
-                if (exiting.get() && queue.isEmpty()) {
+                if (stop.get() && queue.isEmpty()) {
                     break;
                 }
                 try {
                     Object cmd = queue.take();
                     if (cmd instanceof SetCmd) {
-                        writeTo((SetCmd) cmd, os, fos);
+                        SetCmd setCmd = (SetCmd) cmd;
+                        KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.ordinal(), setCmd.key, setCmd.value);
+                        entry.writeTo(os);
                     } else {
                         errors += 1;
                         System.out.println("unrecognized command: " + cmd);
@@ -72,6 +101,9 @@ public class WriteAheadLog {
                     }
                 } catch (InterruptedException e) {
                     System.out.println("caught exception in queue.take(), retrying: " + e);
+                } catch (IOException e) {
+                    System.out.println("caught IOException, exiting: " + e);
+                    break;
                 }
             }
             System.out.println("wal writer thread exiting");
@@ -80,7 +112,7 @@ public class WriteAheadLog {
     }
 
     private String walFileName() {
-        return this.dir + File.separatorChar + "wal";
+        return this.dir + File.separatorChar + "wal" + gen;
     }
 
     void replay(Store store) {
@@ -89,27 +121,18 @@ public class WriteAheadLog {
             return;
         }
         int count = 0;
+        long start = System.currentTimeMillis();
         try {
             DataInputStream is = new DataInputStream(new BufferedInputStream(new FileInputStream(walFileName())));
             while (is.available() > 0) {
-                CmdType type = CmdType.values()[is.readByte()];
-
-                CompressionType keyCmpr = CompressionType.values()[is.readByte()];
-                short keyLen = is.readShort();
-                String key = new String(is.readNBytes(keyLen));
-
-                CompressionType valCmpr = CompressionType.values()[is.readByte()];
-                short valLen = is.readShort();
-                String val = new String(is.readNBytes(valLen));
-
-                store.setRaw(key, val);
-
+                KeyValueEntry entry = KeyValueEntry.readFrom(is);
+                store.setRaw(entry.key, entry.value);
                 count += 1;
                 if (count % 100000 == 0) {
-                    System.out.println("replayed: " + count + " store-size: " + store.memtable.size());
+                    System.out.println("replayed from wal: " + count + " store-size: " + store.memtable.size());
                 }
             }
-            System.out.println("replayed: " + count + " store-size: " + store.memtable.size());
+            System.out.printf("replayed from wal: %d keys, store-size: %d, in %d ms%n", count, store.memtable.size(), (System.currentTimeMillis() - start));
             is.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -120,38 +143,20 @@ public class WriteAheadLog {
         boolean done = false;
         int attempt = 0;
         do {
-            if (exiting.get()) {
-                throw new IllegalStateException("exiting");
+            if (stop.get()) {
+                throw new IllegalStateException("wal stopped, append not allowed");
             }
             try {
                 attempt += 1;
                 done = queue.offer(cmd, 10, TimeUnit.MILLISECONDS);
                 //if (!done) {
-                    //System.out.println("retrying append to queue, attempts: " + attempt);
+                //System.out.println("retrying append to queue, attempts: " + attempt);
                 //}
             } catch (InterruptedException e) {
                 System.out.println("retrying append to queue, attempts: " + attempt + " exception: " + e);
             }
         } while (!done);
+
+        count.incrementAndGet();
     }
-
-    private void writeTo(SetCmd cmd, DataOutputStream os, FileOutputStream fos) {
-        try {
-            os.writeByte(CmdType.Set.ordinal());
-
-            os.writeByte(CompressionType.None.ordinal());
-            os.writeShort(cmd.key.length());
-            os.write(cmd.key.getBytes());
-
-            os.writeByte(CompressionType.None.ordinal());
-            os.writeShort(cmd.value.length());
-            os.write(cmd.value.getBytes());
-
-            os.flush();
-            //fos.getFD().sync();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
 }

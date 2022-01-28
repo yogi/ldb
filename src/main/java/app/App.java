@@ -8,12 +8,12 @@ import org.slf4j.LoggerFactory;
 public class App extends Jooby {
 
     public static final Logger LOG = LoggerFactory.getLogger(App.class);
-    private Store store = new Store("data");
+    private final Store store = new Store("data");
 
     {
-        put("/probe/{probeId}/event/{eventId}", ctx -> saveEvent(ctx));
+        put("/probe/{probeId}/event/{eventId}", this::saveEvent);
 
-        get("/probe/{probeId}/latest", ctx -> getLatestEvent(ctx));
+        get("/probe/{probeId}/latest", this::getLatestEvent);
     }
 
     private Object getLatestEvent(Context ctx) {
