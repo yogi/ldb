@@ -1,7 +1,7 @@
 package app;
 
-import io.jooby.JoobyTest;
 import io.jooby.StatusCode;
+import kotlin.ranges.IntRange;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -9,22 +9,45 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
+import static java.lang.String.format;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@JoobyTest(App.class)
 public class IntegrationTest {
 
-  static OkHttpClient client = new OkHttpClient();
+    static OkHttpClient client = new OkHttpClient();
 
-  @Test
-  public void shouldSayHi(int serverPort) throws IOException {
-    Request req = new Request.Builder()
-        .url("http://localhost:" + serverPort)
-        .build();
+    @Test
+    public void shouldSayHi() throws IOException {
+        int expectedEntries = 1098787;
 
-    try (Response rsp = client.newCall(req).execute()) {
-      assertEquals("Welcome to Jooby!", rsp.body().string());
-      assertEquals(StatusCode.OK.value(), rsp.code());
+        {
+            Request req = new Request.Builder()
+                    .url("http://localhost:8080/stats")
+                    .build();
+            try (Response rsp = client.newCall(req).execute()) {
+                final String body = rsp.body().string();
+                assertTrue(body.contains(String.valueOf(expectedEntries)), format("expected %d entries, got %s", expectedEntries, body));
+            }
+        }
+
+        new IntRange(1, expectedEntries).forEach(n -> {
+            try {
+                String probeId = "PRB" + n;
+                Request req = new Request.Builder()
+                        .url("http://localhost:8080/probe/" + probeId + "/latest")
+                        .build();
+                try (Response rsp = client.newCall(req).execute()) {
+                    String msg = "failed for probe: " + probeId;
+                    assertEquals(StatusCode.OK.value(), rsp.code(), msg);
+                    assertTrue(rsp.body().string().contains("7707d6a0-61b5-11ec-9f10-0800200c9a66" + n), msg);
+                }
+                if (n % 10000 == 0) {
+                    System.out.println(n);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
-  }
 }
