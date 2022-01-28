@@ -1,9 +1,12 @@
 package app;
 
 import java.io.*;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 public class Store {
     public static final int SNAPSHOT_WAL_THRESHOLD = 100000;
@@ -12,13 +15,40 @@ public class Store {
     private volatile WriteAheadLog wal;
 
     public Store(String dir) {
-        this.wal = new WriteAheadLog(dir);
-        loadSnapshot();
+        loadSnapshot(dir + File.separatorChar + "snapshot");
+
+        List<Integer> wals = walGenerations(dir);
+        if (wals.isEmpty()) {
+            return;
+        }
+
+        wal = new WriteAheadLog(dir, wals.get(0));
         wal.replay(this);
+
+        if (wals.size() == 2) {
+            wal.delete();
+            loadSnapshot(dir + File.separatorChar + "snapshot.new");
+            wal = new WriteAheadLog(dir, wals.get(1));
+            wal.replay(this);
+            replaceOldSnapshot();
+        }
     }
 
-    private void loadSnapshot() {
-        String snapshotFileName = wal.dir + File.separatorChar + "snapshot";
+    private static List<Integer> walGenerations(String dir) {
+        File[] wals = new File(dir).listFiles((dir1, name) -> name.startsWith("wal"));
+        if (wals != null && wals.length > 2) {
+            throw new IllegalStateException("more than two wals found");
+        }
+        if (wals == null || wals.length == 0) {
+            return List.of(0);
+        }
+        return Arrays.stream(wals)
+                .map(file -> Integer.parseInt(file.getName().replace("wal", "")))
+                .sorted()
+                .collect(Collectors.toList());
+    }
+
+    private void loadSnapshot(String snapshotFileName) {
         File file = new File(snapshotFileName);
         if (!file.exists() || file.length() == 0) {
             return;
@@ -89,7 +119,7 @@ public class Store {
             }
             os.close();
 
-            renameSnapshot();
+            replaceOldSnapshot();
 
             System.out.printf("writing snapshot... done %d keys in %d ms%n", count, System.currentTimeMillis() - start);
         } catch (IOException e) {
@@ -98,7 +128,7 @@ public class Store {
         }
     }
 
-    private void renameSnapshot() {
+    private void replaceOldSnapshot() {
         File curSnapshot = new File(wal.dir + File.separatorChar + "snapshot");
         if (curSnapshot.exists()) {
             if (!curSnapshot.delete()) {
@@ -106,7 +136,7 @@ public class Store {
             }
         }
         File newSnapshot = new File(wal.dir + File.separatorChar + "snapshot.new");
-        if (!newSnapshot.renameTo(curSnapshot)) {
+        if (newSnapshot.exists() && !newSnapshot.renameTo(curSnapshot)) {
             throw new IllegalStateException("could not rename new snapshot");
         }
     }

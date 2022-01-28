@@ -15,21 +15,6 @@ public class WriteAheadLog {
     private final AtomicBoolean stop = new AtomicBoolean(false);
     private final AtomicInteger count = new AtomicInteger();
 
-    public WriteAheadLog(String dir) {
-        this(dir, lastGeneration(dir));
-    }
-
-    private static int lastGeneration(String dir) {
-        File[] wals = new File(dir).listFiles((dir1, name) -> name.startsWith("wal"));
-        if (wals != null && wals.length > 1) {
-            throw new IllegalStateException("more than one wal found");
-        }
-        if (wals == null || wals.length == 0) {
-            return 0;
-        }
-        return Integer.parseInt(wals[0].getName().replace("wal", ""));
-    }
-
     public int count() {
         return count.get();
     }
