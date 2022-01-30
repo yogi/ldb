@@ -1,4 +1,4 @@
-package app;
+package store.rdb;
 
 import java.io.*;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -100,7 +100,7 @@ public class WriteAheadLog {
         return this.dir + File.separatorChar + "wal" + gen;
     }
 
-    void replay(Store store) {
+    void replay(RDB store) {
         File file = new File(walFileName());
         if (!file.exists() || file.length() == 0) {
             return;

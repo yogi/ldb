@@ -1,20 +1,18 @@
-package app;
+package store.rdb;
 
 import java.io.*;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-public class Store {
+public class RDB implements store.Store {
     public static final int SNAPSHOT_WAL_THRESHOLD = 100000;
     private final AtomicBoolean snapshotInProgress = new AtomicBoolean(false);
     volatile Map<String, String> memtable = new ConcurrentHashMap<>();
     private volatile WriteAheadLog wal;
 
-    public Store(String dir) {
+    public RDB(String dir) {
         loadSnapshot(dir + File.separatorChar + "snapshot");
 
         List<Integer> wals = walGenerations(dir);
@@ -71,16 +69,25 @@ public class Store {
         }
     }
 
-    public synchronized String get(String key) {
-        return memtable.get(key);
+    @Override
+    public synchronized Optional<String> get(String key) {
+        return Optional.ofNullable(memtable.get(key));
     }
 
+    @Override
     public synchronized void set(String key, String value) {
         if (!snapshotInProgress.get() && snapshotThresholdCrossed()) {
             snapshot();
         }
         wal.append(new SetCmd(key, value));
         setRaw(key, value);
+    }
+
+    @Override
+    public Map<String, Object> stats() {
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("memtable-entries", memtable.size());
+        return stats;
     }
 
     private synchronized void snapshot() {

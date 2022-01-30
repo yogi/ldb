@@ -1,4 +1,4 @@
-package app;
+package store.rdb;
 
 public class SetCmd {
     final String key;

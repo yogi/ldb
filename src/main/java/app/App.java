@@ -5,37 +5,45 @@ import io.jooby.Jooby;
 import io.jooby.StatusCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import store.Store;
+import store.ldb.LDB;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Optional;
 
 public class App extends Jooby {
-
     public static final Logger LOG = LoggerFactory.getLogger(App.class);
-    private final Store store = new Store("data");
+    private static final Class DB = LDB.class;
+    private final Store store;
 
     {
+        try {
+            store = (Store) DB.getDeclaredConstructor(String.class).newInstance("data/" + DB.getSimpleName().toLowerCase());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
         put("/probe/{probeId}/event/{eventId}", this::saveEvent);
 
         get("/probe/{probeId}/latest", this::getLatestEvent);
 
         get("/stats", this::stats);
+
+        onStarted(() -> {
+            System.out.println("stats=" + store.stats());
+        });
     }
 
     private Object stats(Context context) {
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("memtable-entries", store.memtable.size());
-        return stats.toString();
+        return store.stats();
     }
 
     private Object getLatestEvent(Context ctx) {
-        String event = store.get(ctx.path().get("probeId").value());
-        if (event == null) {
-            ctx.setResponseCode(StatusCode.NOT_FOUND);
-            return "";
-        } else {
-            return event;
+        Optional<String> event = store.get(ctx.path().get("probeId").value());
+        if (event.isPresent()) {
+            return event.get();
         }
+        ctx.setResponseCode(StatusCode.NOT_FOUND);
+        return "";
     }
 
     private Object saveEvent(Context ctx) {
