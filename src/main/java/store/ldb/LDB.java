@@ -59,20 +59,18 @@ public class LDB implements Store {
             wal = oldWal.createNext();
             memtable = new TreeMap<>();
 
-            new Thread(() -> {
-                try {
-                    oldWal.stop();
-                    levels.get(0).addSegment(oldMemtable);
-                    oldWal.delete();
-                } finally {
-                    writeSegmentInProgress.set(false);
-                }
-            }).start();
+            try {
+                oldWal.stop();
+                levels.get(0).addSegment(oldMemtable);
+                oldWal.delete();
+            } finally {
+                writeSegmentInProgress.set(false);
+            }
         }
     }
 
     private boolean walThresholdCrossed(WriteAheadLog wal) {
-        return wal.fileSize() > 100 * 1024 * 1024;
+        return wal.fileSize() > 10 * 1024 * 1024;
     }
 
     @Override
