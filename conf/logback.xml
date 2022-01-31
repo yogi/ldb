@@ -10,7 +10,7 @@
         <appender-ref ref="STDOUT"/>
     </root>
 
-    <logger name="store" level="INFO" additivity="false">
+    <logger name="store.ldb.Segment" level="DEBUG" additivity="false">
         <appender-ref ref="STDOUT"/>
     </logger>
 

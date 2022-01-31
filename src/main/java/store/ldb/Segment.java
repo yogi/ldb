@@ -4,8 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
 
 public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
@@ -14,19 +15,13 @@ public class Segment {
     private final int num;
     private final Map<String, ValuePosition> index;
 
-    public static List<Segment> loadSegments(File dir) {
-        return Arrays.stream(Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg"))))
-                .map(file -> Integer.parseInt(file.getName().replace("seg", "")))
-                .map(n -> new Segment(dir, n))
-                .collect(Collectors.toList());
-    }
-
     public static Segment create(File dir, TreeMap<String, String> memtable, int num) {
         writeSegment(dir, memtable, num);
         return new Segment(dir, num);
     }
 
     public Segment(File dir, int num) {
+        LOG.info("loading segment: {} - {}", dir.getPath(), num);
         this.dir = dir;
         this.num = num;
         this.index = loadIndex();
@@ -34,7 +29,7 @@ public class Segment {
 
     private static void writeSegment(File dir, TreeMap<String, String> memtable, int num) {
         String segFileName = segmentFileName(dir.getPath(), num);
-        LOG.debug("creating segment: {}", segFileName);
+        LOG.debug("write segment: {}", segFileName);
 
         long start = System.currentTimeMillis();
         try {
@@ -47,11 +42,11 @@ public class Segment {
                 KeyValueEntry keyValueEntry = new KeyValueEntry((byte) 0, k, v);
                 keyValueEntry.writeTo(os);
                 count += 1;
-                LOG.debug("wrote KeyValueEntry {}", k);
+                LOG.debug("wrote entry to segment {}", k);
             }
             os.close();
 
-            LOG.debug("creating segment... done {} keys in {} ms", count, System.currentTimeMillis() - start);
+            LOG.info("write segment done: {} keys in {} ms", count, System.currentTimeMillis() - start);
         } catch (IOException e) {
             LOG.error("creating segment... error", e);
             throw new RuntimeException(e);
@@ -97,11 +92,11 @@ public class Segment {
         if (pos == null) {
             return Optional.empty();
         }
-        try(RandomAccessFile randomAccessFile = new RandomAccessFile(segmentFileName(dir.getPath(), num), "r")) {
+        try (RandomAccessFile randomAccessFile = new RandomAccessFile(segmentFileName(dir.getPath(), num), "r")) {
             randomAccessFile.seek(pos.offset);
             final byte[] bytes = new byte[pos.len];
             randomAccessFile.read(bytes);
-            LOG.debug("found key {} in segment {}", key, dir.getPath());
+            LOG.debug("found key {} in segment {}/seg{}", key, dir.getPath(), num);
             return Optional.of(new String(bytes));
         } catch (IOException e) {
             throw new RuntimeException("could not get key: " + key + ", exception: " + e);
@@ -124,5 +119,13 @@ public class Segment {
             this.offset = offset;
             this.len = len;
         }
+    }
+
+    @Override
+    public String toString() {
+        return "Segment{" +
+                "dir=" + dir +
+                ", num=" + num +
+                '}';
     }
 }

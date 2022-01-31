@@ -32,7 +32,7 @@ public class IntegrationTest {
         }
 */
 
-        new IntRange(2, expectedEntries).forEach(n -> {
+        new IntRange(1, expectedEntries).forEach(n -> {
             try {
                 String probeId = "PRB" + n;
                 Request req = new Request.Builder()
