@@ -19,7 +19,7 @@ public class Level {
         this.num = num;
         this.dir = new File(levelDirName(dirName, num));
         if (!dir.exists()) {
-            if (!dir.mkdir()) {
+            if (!dir.mkdirs()) {
                 throw new RuntimeException("couldn't create level dir: " + num);
             }
         }
