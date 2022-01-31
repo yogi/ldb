@@ -16,11 +16,8 @@ public class WriteAheadLog {
 
     final int gen;
     final String dir;
-    private final DataOutputStream os;
     private final LinkedBlockingQueue<Object> queue;
-    private final Thread writerThread;
     private final AtomicBoolean stop = new AtomicBoolean(false);
-    private final AtomicInteger count = new AtomicInteger();
     private final AtomicInteger totalBytes = new AtomicInteger();
 
     public static WriteAheadLog init(String dir, Level levelZero) {
@@ -45,17 +42,19 @@ public class WriteAheadLog {
 
         this.queue = new LinkedBlockingQueue<>(1000);
 
-        FileOutputStream fos;
-        try {
-            this.dir = dir;
-            fos = new FileOutputStream(walFileName(), true);
-            this.os = new DataOutputStream(new BufferedOutputStream(fos, 1024 * 8));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        writerThread = new Thread(() -> {
+        this.dir = dir;
+        Thread writerThread = new Thread(() -> {
             LOG.info("wal writer thread started");
+
+            FileOutputStream fos;
+            DataOutputStream os;
+            try {
+                fos = new FileOutputStream(walFileName(), true);
+                os = new DataOutputStream(new BufferedOutputStream(fos, 1024 * 8));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+
             int count = 0;
             int errors = 0;
             while (true) {
@@ -78,13 +77,17 @@ public class WriteAheadLog {
                         LOG.info("processed {}, errors {}, queue-length {}", count, errors, queue.size());
                     }
                 } catch (InterruptedException e) {
-                    if (!stop.get()) {
-                        LOG.error("caught exception in queue.take, retrying: " + e);
-                    }
+                    LOG.error("caught exception in queue.take, retrying: " + e);
                 } catch (IOException e) {
                     LOG.error("caught IOException, exiting: ", e);
                     break;
                 }
+            }
+            try {
+                os.close();
+            } catch (IOException e) {
+                LOG.error("caught IOException when closing output stream, ignoring ", e);
+
             }
             LOG.info("wal writer thread exiting");
         });
@@ -100,18 +103,8 @@ public class WriteAheadLog {
                 .collect(Collectors.toCollection(LinkedList::new));
     }
 
-    public int count() {
-        return count.get();
-    }
-
     public void stop() {
         stop.set(true);
-        try {
-            writerThread.interrupt();
-            os.close();
-        } catch (IOException e) {
-            LOG.error("error when stopping wal", e);
-        }
     }
 
     public void delete() {
@@ -124,10 +117,6 @@ public class WriteAheadLog {
         }
     }
 
-    public Integer gen() {
-        return gen;
-    }
-
     public long totalBytes() {
         return totalBytes.get();
     }
@@ -135,6 +124,7 @@ public class WriteAheadLog {
     public WriteAheadLog createNext() {
         return new WriteAheadLog(dir, gen + 1);
     }
+
     private enum CmdType {
         Set,
 
@@ -179,15 +169,10 @@ public class WriteAheadLog {
             try {
                 attempt += 1;
                 done = queue.offer(cmd, 10, TimeUnit.MILLISECONDS);
-                //if (!done) {
-                //System.out.println("retrying append to queue, attempts: " + attempt);
-                //}
             } catch (InterruptedException e) {
                 LOG.error("retrying append to queue for {}, attempts: {}, exception: {}", cmd.key, attempt, e);
             }
         } while (!done);
-
-        LOG.debug("append to queue done... {}", cmd.key);
-        count.incrementAndGet();
+        LOG.debug("append to queue done for key {} after {} attempts", cmd.key, attempt);
     }
 }
