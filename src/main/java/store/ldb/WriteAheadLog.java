@@ -27,7 +27,7 @@ public class WriteAheadLog {
             TreeMap<String, String> map = new TreeMap<>();
             wals.forEach(wal -> wal.replay(map));
             if (map.size() > 0) {
-                levelZero.addSegment(map);
+                levelZero.flushMemtable(map);
             }
             wals.forEach(WriteAheadLog::delete);
             nextGen = wals.getLast().gen + 1;

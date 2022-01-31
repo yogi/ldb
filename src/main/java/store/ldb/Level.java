@@ -6,6 +6,8 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 public class Level {
@@ -15,6 +17,8 @@ public class Level {
     private final File dir;
     private final int num;
     private final LinkedBlockingDeque<Segment> segments;
+    private final ReentrantLock lock;
+    private AtomicBoolean compactionInProgress = new AtomicBoolean();
 
     public Level(String dirName, int num) {
         LOG.info("loading level: {}", num);
@@ -27,6 +31,7 @@ public class Level {
         }
 
         this.segments = loadSegments(dir);
+        lock = new ReentrantLock();
     }
 
     public static LinkedBlockingDeque<Segment> loadSegments(File dir) {
@@ -34,7 +39,11 @@ public class Level {
         return Arrays.stream(Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg"))))
                 .map(file -> Integer.parseInt(file.getName().replace("seg", "")))
                 .sorted(comparator)
-                .map(n -> new Segment(dir, n))
+                .map(n -> {
+                    final Segment segment = new Segment(dir, n);
+                    segment.loadIndex();
+                    return segment;
+                })
                 .collect(Collectors.toCollection(LinkedBlockingDeque::new));
     }
 
@@ -61,9 +70,17 @@ public class Level {
         return Optional.empty();
     }
 
-    public void addSegment(TreeMap<String, String> memtable) {
-        int segmentNumber = nextSegmentNumber();
-        segments.addFirst(Segment.create(dir, memtable, segmentNumber));
+    public void flushMemtable(TreeMap<String, String> memtable) {
+        final Segment segment;
+        lock.lock();
+        try {
+            int segmentNumber = nextSegmentNumber();
+            segment = new Segment(dir, segmentNumber);
+            segments.addFirst(segment);
+        } finally {
+            lock.unlock();
+        }
+        segment.writeMemtable(memtable);
     }
 
     private int nextSegmentNumber() {
@@ -85,32 +102,45 @@ public class Level {
         return num;
     }
 
-    public void compact(Level nextLevel) {
-        if (nextLevel == null) {
+    public void compact() {
+        if (compactionInProgress.get()) {
             return;
         }
-        final List<Segment> segmentsToCompact = new ArrayList<>(new ArrayList<>(segments));
-        if (segmentsToCompact.size() < 10) {
-            return;
+
+        try {
+            lock.lock();
+            final Segment segment;
+            final List<Segment> segmentsToCompact = new ArrayList<>(new ArrayList<>(segments));
+            try {
+                if (segmentsToCompact.size() < 10) {
+                    return;
+                }
+                if (segmentsToCompact.stream().anyMatch(s -> !s.isReady())) {
+                    return;
+                }
+                compactionInProgress.set(true);
+                int segmentNumber = nextSegmentNumber();
+                segment = new Segment(dir, segmentNumber);
+                segments.addFirst(segment);
+            } finally {
+                lock.unlock();
+            }
+
+            LOG.info("compacting level: {}, segments: {}", num, segmentsToCompact.size());
+            segment.compactAll(segmentsToCompact);
+
+            lock.lock();
+            try {
+                for (Segment seg : segmentsToCompact) {
+                    removeSegment(seg);
+                    seg.delete();
+                }
+            } finally {
+                lock.unlock();
+            }
+        } finally {
+            compactionInProgress.set(false);
         }
-        LOG.info("compacting level: {}", num);
-        Collections.reverse(segmentsToCompact);
-        TreeMap<String, String> map = new TreeMap<>();
-
-        long totalBytes = 0;
-        for (Segment segment : segmentsToCompact) {
-            segment.replayTo(map);
-            totalBytes += segment.totalBytes();
-        }
-
-        nextLevel.addSegment(map);
-        LOG.info("compacted {} segments from level {} to level {} segment {} bytes", segmentsToCompact.size(), num, nextLevel.num, totalBytes);
-
-        for (Segment segment : segmentsToCompact) {
-            removeSegment(segment);
-            segment.delete();
-        }
-
     }
 
     private void removeSegment(Segment segment) {

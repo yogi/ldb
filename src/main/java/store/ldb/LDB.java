@@ -70,7 +70,7 @@ public class LDB implements Store {
 
             try {
                 oldWal.stop();
-                levels.get(0).addSegment(oldMemtable);
+                levels.get(0).flushMemtable(oldMemtable);
                 oldWal.delete();
             } finally {
                 writeSegmentInProgress.set(false);

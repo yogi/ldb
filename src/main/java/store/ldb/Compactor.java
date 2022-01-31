@@ -23,7 +23,7 @@ public class Compactor {
         LOG.info("started compaction loop");
         while(!stop.get()) {
             for (Level level : levels.values()) {
-                level.compact(levels.get(level.getNum() + 1));
+                level.compact();
                 sleepSilently();
             }
         }

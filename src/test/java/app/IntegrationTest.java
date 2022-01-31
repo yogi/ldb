@@ -20,18 +20,6 @@ public class IntegrationTest {
     public void shouldSayHi() throws IOException {
         int expectedEntries = 1000000;
 
-/*
-        {
-            Request req = new Request.Builder()
-                    .url("http://localhost:8080/stats")
-                    .build();
-            try (Response rsp = client.newCall(req).execute()) {
-                final String body = rsp.body().string();
-                assertTrue(body.contains(String.valueOf(expectedEntries)), format("expected %d entries, got %s", expectedEntries, body));
-            }
-        }
-*/
-
         new IntRange(1, expectedEntries).forEach(n -> {
             try {
                 String probeId = "PRB" + n;
