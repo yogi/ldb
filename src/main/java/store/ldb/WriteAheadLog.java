@@ -21,7 +21,7 @@ public class WriteAheadLog {
     private final Thread writerThread;
     private final AtomicBoolean stop = new AtomicBoolean(false);
     private final AtomicInteger count = new AtomicInteger();
-    private final AtomicInteger writtenBytes = new AtomicInteger();
+    private final AtomicInteger totalBytes = new AtomicInteger();
 
     public static WriteAheadLog init(String dir, Level levelZero) {
         int nextGen = 0;
@@ -45,21 +45,6 @@ public class WriteAheadLog {
 
         this.queue = new LinkedBlockingQueue<>(1000);
 
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            @Override
-            public void run() {
-                try {
-                    LOG.debug("shutdown hook cleaning up");
-                    WriteAheadLog.this.stop();
-                    writerThread.interrupt();
-                    os.close();
-                    LOG.debug("shutdown hook cleaning up... done, records written: {}, flushes: {}", KeyValueEntry.getRecordsWritten(), KeyValueEntry.getFlushCount());
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-
         FileOutputStream fos;
         try {
             this.dir = dir;
@@ -70,7 +55,7 @@ public class WriteAheadLog {
         }
 
         writerThread = new Thread(() -> {
-            LOG.debug("wal writer thread started");
+            LOG.info("wal writer thread started");
             int count = 0;
             int errors = 0;
             while (true) {
@@ -84,7 +69,7 @@ public class WriteAheadLog {
                         LOG.debug("appending SetCmd key: {}", setCmd.key);
                         KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.ordinal(), setCmd.key, setCmd.value);
                         entry.writeTo(os);
-                        writtenBytes.addAndGet(entry.totalLength());
+                        totalBytes.addAndGet(entry.totalLength());
                     } else {
                         errors += 1;
                         LOG.error("unrecognized command: " + cmd);
@@ -93,13 +78,15 @@ public class WriteAheadLog {
                         LOG.info("processed {}, errors {}, queue-length {}", count, errors, queue.size());
                     }
                 } catch (InterruptedException e) {
-                    LOG.error("caught exception in queue.take, retrying: " + e);
+                    if (!stop.get()) {
+                        LOG.error("caught exception in queue.take, retrying: " + e);
+                    }
                 } catch (IOException e) {
                     LOG.error("caught IOException, exiting: ", e);
                     break;
                 }
             }
-            LOG.debug("wal writer thread exiting");
+            LOG.info("wal writer thread exiting");
         });
         writerThread.start();
     }
@@ -119,6 +106,12 @@ public class WriteAheadLog {
 
     public void stop() {
         stop.set(true);
+        try {
+            writerThread.interrupt();
+            os.close();
+        } catch (IOException e) {
+            LOG.error("error when stopping wal", e);
+        }
     }
 
     public void delete() {
@@ -135,8 +128,8 @@ public class WriteAheadLog {
         return gen;
     }
 
-    public long fileSize() {
-        return writtenBytes.get();
+    public long totalBytes() {
+        return totalBytes.get();
     }
 
     public WriteAheadLog createNext() {
@@ -165,7 +158,7 @@ public class WriteAheadLog {
                 memtable.put(entry.key, entry.value);
                 count += 1;
                 if (count % 100000 == 0) {
-                    LOG.debug("replayed from wal: {}, store-size: ", count, memtable.size());
+                    LOG.debug("replayed from wal: {}", count);
                 }
             }
             LOG.debug("replayed from wal: {} keys, store-size: {}, in {} ms", count, memtable.size(), (System.currentTimeMillis() - start));

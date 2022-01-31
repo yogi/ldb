@@ -16,6 +16,7 @@ public class LDB implements Store {
     private final String dir;
     private final TreeMap<Integer, Level> levels;
     private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
+    private final Compactor compactor;
     private volatile TreeMap<String, String> memtable;
     private volatile WriteAheadLog wal;
 
@@ -23,7 +24,15 @@ public class LDB implements Store {
         this.dir = dir;
         this.levels = Level.loadLevels(dir);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
+        this.compactor = Compactor.start(levels);
         this.memtable = new TreeMap<>();
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            LOG.info("shutting down");
+            wal.stop();
+            compactor.stop();
+        }));
+
     }
 
     public synchronized void set(String key, String value) {
@@ -70,7 +79,7 @@ public class LDB implements Store {
     }
 
     private boolean walThresholdCrossed(WriteAheadLog wal) {
-        return wal.fileSize() > 10 * 1024 * 1024;
+        return wal.totalBytes() > levels.firstEntry().getValue().maxSegmentSize();
     }
 
     @Override

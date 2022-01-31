@@ -13,7 +13,8 @@ public class Segment {
 
     private final File dir;
     private final int num;
-    private final Map<String, ValuePosition> index;
+    private final Map<String, ValuePosition> index = new TreeMap<>();
+    private int totalBytes;
 
     public static Segment create(File dir, TreeMap<String, String> memtable, int num) {
         writeSegment(dir, memtable, num);
@@ -24,7 +25,7 @@ public class Segment {
         LOG.info("loading segment: {} - {}", dir.getPath(), num);
         this.dir = dir;
         this.num = num;
-        this.index = loadIndex();
+        loadIndex();
     }
 
     private static void writeSegment(File dir, TreeMap<String, String> memtable, int num) {
@@ -53,31 +54,29 @@ public class Segment {
         }
     }
 
-    private Map<String, ValuePosition> loadIndex() {
+    private void loadIndex() {
         File file = new File(segmentFileName(dir.getPath(), num));
         if (!file.exists()) {
             throw new IllegalArgumentException("segment file does not exist: " + file.getPath());
         }
 
         try {
-            Map<String, ValuePosition> map = new TreeMap<>();
             int count = 0;
             int offset = 0;
             long start = System.currentTimeMillis();
             DataInputStream is = new DataInputStream(new BufferedInputStream(new FileInputStream(segmentFileName(dir.getPath(), num))));
             while (is.available() > 0) {
                 KeyValueEntry entry = KeyValueEntry.readFrom(is);
-                map.put(entry.key, new ValuePosition(offset + entry.valueOffset(), entry.value.length()));
+                index.put(entry.key, new ValuePosition(offset + entry.valueOffset(), entry.value.length()));
                 offset += entry.totalLength();
                 count += 1;
                 if (count % 100000 == 0) {
-                    LOG.debug("loaded from segment: {} store-size: {}", count, map.size());
+                    LOG.debug("loaded from segment: {} store-size: {}", count, index.size());
                 }
             }
-            LOG.debug("loaded from segment: {} keys, store-size: {}, in {} ms", count, map.size(), (System.currentTimeMillis() - start));
+            totalBytes = offset;
+            LOG.debug("loaded from segment: {} keys, store-size: {}, in {} ms", count, index.size(), (System.currentTimeMillis() - start));
             is.close();
-
-            return map;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -109,6 +108,26 @@ public class Segment {
 
     public long keyCount() {
         return index.size();
+    }
+
+    public int totalBytes() {
+        return totalBytes;
+    }
+
+    public void replayTo(Map<String, String> map) {
+        index.forEach((key, valuePosition) -> map.put(key, get(key).get()));
+    }
+
+    public void delete() {
+        File file = new File(segmentFileName(dir.getPath(), num));
+        LOG.info("delete segment file: " + file.getPath());
+        if (file.exists()) {
+            if (!file.delete()) {
+                final String msg = "could not delete segment file: " + file.getPath();
+                LOG.error(msg);
+                throw new IllegalStateException(msg);
+            }
+        }
     }
 
     private static class ValuePosition {
