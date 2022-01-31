@@ -21,6 +21,7 @@ public class WriteAheadLog {
     private final Thread writerThread;
     private final AtomicBoolean stop = new AtomicBoolean(false);
     private final AtomicInteger count = new AtomicInteger();
+    private final AtomicInteger writtenBytes = new AtomicInteger();
 
     public static WriteAheadLog init(String dir, Level levelZero) {
         int nextGen = 0;
@@ -83,6 +84,7 @@ public class WriteAheadLog {
                         LOG.debug("appending SetCmd key: {}", setCmd.key);
                         KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.ordinal(), setCmd.key, setCmd.value);
                         entry.writeTo(os);
+                        writtenBytes.addAndGet(entry.totalLength());
                     } else {
                         errors += 1;
                         LOG.error("unrecognized command: " + cmd);
@@ -134,7 +136,7 @@ public class WriteAheadLog {
     }
 
     public long fileSize() {
-        return new File(walFileName()).length();
+        return writtenBytes.get();
     }
 
     public WriteAheadLog createNext() {
