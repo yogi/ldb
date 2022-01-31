@@ -39,7 +39,7 @@ public class WriteAheadLog {
     }
 
     public WriteAheadLog(String dir, int gen) {
-        LOG.info("init {} {}", dir, gen);
+        LOG.info("init wal {} {}", dir, gen);
 
         this.gen = gen;
 
