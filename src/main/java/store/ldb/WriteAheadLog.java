@@ -24,60 +24,22 @@ public class WriteAheadLog {
 
     public static WriteAheadLog init(String dir, Level levelZero) {
         int nextGen = 0;
-        List<WriteAheadLog> wals = loadWals(dir);
+        LinkedList<WriteAheadLog> wals = loadWals(dir);
         if (!wals.isEmpty()) {
             TreeMap<String, String> map = new TreeMap<>();
             wals.forEach(wal -> wal.replay(map));
             if (map.size() > 0) {
                 levelZero.addSegment(map);
-                wals.forEach(WriteAheadLog::delete);
-                nextGen = wals.get(wals.size() - 1).gen + 1;
             }
+            wals.forEach(WriteAheadLog::delete);
+            nextGen = wals.getLast().gen + 1;
         }
         return new WriteAheadLog(dir, nextGen);
     }
 
-    public static List<WriteAheadLog> loadWals(String dir) {
-        return Arrays.stream(Objects.requireNonNull(new File(dir)
-                        .listFiles((dir1, name) -> name.startsWith("wal"))))
-                .map(file -> Integer.parseInt(file.getName().replace("wal", "")))
-                .sorted()
-                .map(gen -> new WriteAheadLog(dir, gen))
-                .collect(Collectors.toList());
-    }
-
-    public int count() {
-        return count.get();
-    }
-
-    public void stop() {
-        stop.set(true);
-    }
-
-    public void delete() {
-        File file = new File(walFileName());
-        if (file.exists()) {
-            file.delete();
-        }
-    }
-
-    public Integer gen() {
-        return gen;
-    }
-
-    public long fileSize() {
-        return new File(walFileName()).length();
-    }
-
-    public WriteAheadLog createNext() {
-        return new WriteAheadLog(dir, gen + 1);
-    }
-
-    private enum CmdType {
-        Set,
-    }
-
     public WriteAheadLog(String dir, int gen) {
+        LOG.info("init {} {}", dir, gen);
+
         this.gen = gen;
 
         this.queue = new LinkedBlockingQueue<>(1000);
@@ -138,6 +100,49 @@ public class WriteAheadLog {
             LOG.debug("wal writer thread exiting");
         });
         writerThread.start();
+    }
+
+    public static LinkedList<WriteAheadLog> loadWals(String dir) {
+        return Arrays.stream(Objects.requireNonNull(new File(dir)
+                        .listFiles((dir1, name) -> name.startsWith("wal"))))
+                .map(file -> Integer.parseInt(file.getName().replace("wal", "")))
+                .sorted()
+                .map(gen -> new WriteAheadLog(dir, gen))
+                .collect(Collectors.toCollection(LinkedList::new));
+    }
+
+    public int count() {
+        return count.get();
+    }
+
+    public void stop() {
+        stop.set(true);
+    }
+
+    public void delete() {
+        LOG.info("delete {}", walFileName());
+        File file = new File(walFileName());
+        if (file.exists()) {
+            if (!file.delete()) {
+                throw new RuntimeException("could not delete wal: " + walFileName());
+            }
+        }
+    }
+
+    public Integer gen() {
+        return gen;
+    }
+
+    public long fileSize() {
+        return new File(walFileName()).length();
+    }
+
+    public WriteAheadLog createNext() {
+        return new WriteAheadLog(dir, gen + 1);
+    }
+    private enum CmdType {
+        Set,
+
     }
 
     private String walFileName() {

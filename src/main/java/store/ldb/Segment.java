@@ -46,7 +46,7 @@ public class Segment {
             }
             os.close();
 
-            LOG.info("write segment done: {} keys in {} ms", count, System.currentTimeMillis() - start);
+            LOG.info("write segment {} done: {} keys in {} ms", segFileName, count, System.currentTimeMillis() - start);
         } catch (IOException e) {
             LOG.error("creating segment... error", e);
             throw new RuntimeException(e);
