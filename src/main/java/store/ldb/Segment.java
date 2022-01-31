@@ -1,10 +1,15 @@
 package store.ldb;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class Segment {
+    public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
+
     private final File dir;
     private final int num;
     private final Map<String, ValuePosition> index;
@@ -29,7 +34,7 @@ public class Segment {
 
     private static void writeSegment(File dir, TreeMap<String, String> memtable, int num) {
         String segFileName = segmentFileName(dir.getPath(), num);
-        System.out.println("creating segment: " + segFileName);
+        LOG.debug("creating segment: {}", segFileName);
 
         long start = System.currentTimeMillis();
         try {
@@ -42,12 +47,13 @@ public class Segment {
                 KeyValueEntry keyValueEntry = new KeyValueEntry((byte) 0, k, v);
                 keyValueEntry.writeTo(os);
                 count += 1;
+                LOG.debug("wrote KeyValueEntry {}", k);
             }
             os.close();
 
-            System.out.printf("creating segment... done %d keys in %d ms%n", count, System.currentTimeMillis() - start);
+            LOG.debug("creating segment... done {} keys in {} ms", count, System.currentTimeMillis() - start);
         } catch (IOException e) {
-            System.out.printf("creating segment... error: %s\n", e);
+            LOG.error("creating segment... error", e);
             throw new RuntimeException(e);
         }
     }
@@ -70,10 +76,10 @@ public class Segment {
                 offset += entry.totalLength();
                 count += 1;
                 if (count % 100000 == 0) {
-                    System.out.println("loaded from segment: " + count + " store-size: " + map.size());
+                    LOG.debug("loaded from segment: {} store-size: {}", count, map.size());
                 }
             }
-            System.out.printf("loaded from segment: %d keys, store-size: %d, in %d ms%n", count, map.size(), (System.currentTimeMillis() - start));
+            LOG.debug("loaded from segment: {} keys, store-size: {}, in {} ms", count, map.size(), (System.currentTimeMillis() - start));
             is.close();
 
             return map;
@@ -95,6 +101,7 @@ public class Segment {
             randomAccessFile.seek(pos.offset);
             final byte[] bytes = new byte[pos.len];
             randomAccessFile.read(bytes);
+            LOG.debug("found key {} in segment {}", key, dir.getPath());
             return Optional.of(new String(bytes));
         } catch (IOException e) {
             throw new RuntimeException("could not get key: " + key + ", exception: " + e);

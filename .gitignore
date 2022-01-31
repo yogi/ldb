@@ -2,3 +2,5 @@
 data/
 target/
 tmp/
+*.log
+

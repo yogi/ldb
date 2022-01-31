@@ -1,5 +1,7 @@
 package store.ldb;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import store.Store;
 
 import java.util.HashMap;
@@ -9,6 +11,8 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class LDB implements Store {
+    public static final Logger LOG = LoggerFactory.getLogger(LDB.class);
+
     private final String dir;
     private final TreeMap<Integer, Level> levels;
     private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
@@ -23,6 +27,7 @@ public class LDB implements Store {
     }
 
     public synchronized void set(String key, String value) {
+        LOG.debug("set {}", key);
         wal.append(new SetCmd(key, value));
         memtable.put(key, value);
         writeSegmentIfNeeded();
@@ -30,14 +35,17 @@ public class LDB implements Store {
 
     public synchronized Optional<String> get(String key) {
         if (memtable.containsKey(key)) {
+            LOG.debug("get found {} in memtable", key);
             return Optional.of(memtable.get(key));
         }
         for (Level level : levels.values()) {
             Optional<String> value = level.get(key);
             if (value.isPresent()) {
+                LOG.debug("get found {} in level", level.dirPathName());
                 return value;
             }
         }
+        LOG.debug("get did not find {}", key);
         return Optional.empty();
     }
 

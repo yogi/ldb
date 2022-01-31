@@ -29,7 +29,7 @@ public class App extends Jooby {
         get("/stats", this::stats);
 
         onStarted(() -> {
-            System.out.println("stats=" + store.stats());
+            LOG.info("stats: {}", store.stats());
         });
     }
 

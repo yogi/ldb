@@ -7,10 +7,8 @@ import okhttp3.Request;
 import okhttp3.Response;
 import org.junit.jupiter.api.Test;
 
-import java.io.File;
 import java.io.IOException;
 
-import static java.lang.String.format;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,18 +16,9 @@ public class IntegrationTest {
 
     static OkHttpClient client = new OkHttpClient();
 
-
-    @Test
-    public void listFiles() {
-        final File dir = new File("data/ldb");
-        System.out.println("dir.getName() = " + dir.getName());
-        System.out.println("dir.getPath() = " + dir.getPath());
-        System.out.println("dir.getAbsolutePath() = " + dir.getAbsolutePath());
-    }
-
     @Test
     public void shouldSayHi() throws IOException {
-        int expectedEntries = 1182573;
+        int expectedEntries = 1000000;
 
 /*
         {
@@ -43,7 +32,7 @@ public class IntegrationTest {
         }
 */
 
-        new IntRange(1, expectedEntries).forEach(n -> {
+        new IntRange(2, expectedEntries).forEach(n -> {
             try {
                 String probeId = "PRB" + n;
                 Request req = new Request.Builder()
