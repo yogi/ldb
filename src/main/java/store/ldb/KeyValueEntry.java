@@ -14,18 +14,8 @@ public class KeyValueEntry {
     private static final AtomicLong recordsWritten = new AtomicLong();
     private static final AtomicLong flushCount = new AtomicLong();
 
-    public static KeyValueEntry readFrom(DataInputStream is) throws IOException {
-        byte metadata = is.readByte();
-
-        CompressionType keyCmpr = CompressionType.values()[is.readByte()];
-        short keyLen = is.readShort();
-        String key = new String(is.readNBytes(keyLen));
-
-        CompressionType valCmpr = CompressionType.values()[is.readByte()];
-        short valLen = is.readShort();
-        String val = new String(is.readNBytes(valLen));
-
-        return new KeyValueEntry(metadata, key, val);
+    private enum CompressionType {
+        None
     }
 
     public int valueOffset() {
@@ -41,8 +31,18 @@ public class KeyValueEntry {
         return valueOffset() + value.length();
     }
 
-    private enum CompressionType {
-        None
+    public static KeyValueEntry readFrom(DataInputStream is) throws IOException {
+        byte metadata = is.readByte();
+
+        CompressionType keyCmpr = CompressionType.values()[is.readByte()];
+        short keyLen = is.readShort();
+        String key = new String(is.readNBytes(keyLen));
+
+        CompressionType valCmpr = CompressionType.values()[is.readByte()];
+        short valLen = is.readShort();
+        String val = new String(is.readNBytes(valLen));
+
+        return new KeyValueEntry(metadata, key, val);
     }
 
     public KeyValueEntry(byte metadata, String key, String value) {
