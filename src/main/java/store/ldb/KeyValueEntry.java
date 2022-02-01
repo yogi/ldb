@@ -10,6 +10,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class KeyValueEntry {
     public static final int FLUSH_INTERVAL = 0;
+    public static final CompressionType KEY_COMPRESSION = CompressionType.NONE;
+    public static final CompressionType VALUE_COMPRESSION = CompressionType.NONE;
     final byte metadata;
     final String key;
     final String value;
@@ -100,15 +102,13 @@ public class KeyValueEntry {
     public void writeTo(DataOutputStream os) throws IOException {
         os.writeByte(metadata);
 
-        final CompressionType keyCompression = CompressionType.NONE;
-        final byte[] compressedKey = keyCompression.compress(key.getBytes());
-        os.writeByte(keyCompression.code);
+        final byte[] compressedKey = KEY_COMPRESSION.compress(key.getBytes());
+        os.writeByte(KEY_COMPRESSION.code);
         os.writeShort(compressedKey.length);
         os.write(compressedKey);
 
-        final CompressionType valueCompression = CompressionType.SNAPPY;
-        final byte[] compressedValue = valueCompression.compress(value.getBytes());
-        os.writeByte(valueCompression.code);
+        final byte[] compressedValue = VALUE_COMPRESSION.compress(value.getBytes());
+        os.writeByte(VALUE_COMPRESSION.code);
         os.writeShort(compressedValue.length);
         os.write(compressedValue);
 
