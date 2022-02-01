@@ -66,7 +66,7 @@ public class WriteAheadLog {
                     if (cmd instanceof SetCmd) {
                         SetCmd setCmd = (SetCmd) cmd;
                         LOG.debug("appending SetCmd key: {}", setCmd.key);
-                        KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.ordinal(), setCmd.key, setCmd.value);
+                        KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.code, setCmd.key, setCmd.value);
                         entry.writeTo(os);
                         totalBytes.addAndGet(entry.totalLength());
                     } else {
@@ -126,8 +126,14 @@ public class WriteAheadLog {
     }
 
     private enum CmdType {
-        Set,
+        Set(1),
+        ;
 
+        final int code;
+
+        CmdType(int code) {
+            this.code = code;
+        }
     }
 
     private String walFileName() {

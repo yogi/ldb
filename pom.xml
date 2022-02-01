@@ -48,6 +48,7 @@
             <type>jar</type>
             <scope>compile</scope>
         </dependency>
+        
         <!-- Tests -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
