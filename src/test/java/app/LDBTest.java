@@ -7,6 +7,7 @@ import store.ldb.LDB;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,18 +26,24 @@ public class LDBTest {
 
         store.set("a", "b");
         assertEquals("b", store.get("a").orElseThrow());
-        assertFileExists("tmp/ldb/wal0");
-        assertFileDoesNotExist("tmp/ldb/level0/seg0");
+        assertFileExists("tmp/ldb/wal1");
+        assertFileExists("tmp/ldb/level0/seg0");
 
         store.set("b", "c");
         Thread.sleep(100);
         assertEquals("b", store.get("a").orElseThrow());
         assertEquals("c", store.get("b").orElseThrow());
         assertFileDoesNotExist("tmp/ldb/wal0");
-        assertFileExists("tmp/ldb/wal1");
-        assertFileDoesNotExist("tmp/ldb/level0/seg0");
+        assertFileDoesNotExist("tmp/ldb/wal1");
+        assertFileExists("tmp/ldb/wal2");
+        assertDirEmpty("tmp/ldb/level0/");
         assertFileExists("tmp/ldb/level1/seg0");
         assertFileExists("tmp/ldb/level1/seg1");
+    }
+
+    private void assertDirEmpty(String pathname) {
+        final File dir = new File(pathname);
+        assertTrue(dir.exists() && dir.isDirectory() && Objects.requireNonNull(dir.list()).length == 0, () -> String.format("dir should be empty %s", pathname));
     }
 
     private void assertFileExists(String pathname) {

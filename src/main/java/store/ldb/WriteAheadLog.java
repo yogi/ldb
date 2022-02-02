@@ -5,9 +5,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -17,10 +14,8 @@ public class WriteAheadLog {
     static String dir;
 
     final int gen;
-    private final LinkedBlockingQueue<Object> writeQueue;
-    private final AtomicBoolean stop = new AtomicBoolean(false);
+    private DataOutputStream os;
     private final AtomicInteger totalBytes = new AtomicInteger();
-    private final Thread writerThread;
 
     private enum CmdType {
         Set(1),
@@ -59,19 +54,27 @@ public class WriteAheadLog {
         return wals.getLast().gen;
     }
 
-    private void start() {
-        writerThread.start();
-    }
-
     private WriteAheadLog(int gen) {
         this.gen = gen;
         LOG.info("create {}", walFileName());
-        this.writeQueue = new LinkedBlockingQueue<>(1000);
-        this.writerThread = new WriterThread("wal" + gen + "-writer");
+    }
+
+    private void start() {
+        FileOutputStream fos;
+        try {
+            fos = new FileOutputStream(walFileName(), true);
+            this.os = new DataOutputStream(new BufferedOutputStream(fos, 1024 * 8));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void stop() {
-        stop.set(true);
+        try {
+            os.close();
+        } catch (IOException e) {
+            LOG.error("caught IOException when closing output stream, ignoring ", e);
+        }
     }
 
     public void delete() {
@@ -123,82 +126,19 @@ public class WriteAheadLog {
     }
 
     public void append(SetCmd cmd) {
-        LOG.debug("append {} to write-queue {}", cmd.key, walFileName());
-        boolean done = false;
-        int attempt = 0;
-        do {
-            if (stop.get()) {
-                throw new IllegalStateException("wal stopped, append not allowed");
-            }
-            try {
-                attempt += 1;
-                done = writeQueue.offer(cmd, 10, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-                LOG.error("retrying append to queue for {}, attempts: {}, exception: {}", cmd.key, attempt, e);
-            }
-        } while (!done);
-        LOG.debug("done... append {} to write-queue {} after {} attempts", cmd.key, walFileName(), attempt);
+        try {
+            LOG.debug("append {} to {}", cmd.key, walFileName());
+            KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.code, cmd.key, cmd.value);
+            entry.writeTo(os);
+            totalBytes.addAndGet(entry.totalLength());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public String toString() {
         return walFileName();
-    }
-
-    private class WriterThread extends Thread {
-        public WriterThread(String name) {
-            super(name);
-        }
-
-        @Override
-        public void run() {
-            LOG.info("wal writer thread started - {}", getName());
-
-            FileOutputStream fos;
-            DataOutputStream os;
-            try {
-                fos = new FileOutputStream(walFileName(), true);
-                os = new DataOutputStream(new BufferedOutputStream(fos, 1024 * 8));
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-
-            int count = 0;
-            int errors = 0;
-            while (true) {
-                if (stop.get() && writeQueue.isEmpty()) {
-                    break;
-                }
-                try {
-                    Object cmd = writeQueue.take();
-                    if (cmd instanceof SetCmd) {
-                        SetCmd setCmd = (SetCmd) cmd;
-                        LOG.debug("appending SetCmd key: {}", setCmd.key);
-                        KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.code, setCmd.key, setCmd.value);
-                        entry.writeTo(os);
-                        totalBytes.addAndGet(entry.totalLength());
-                    } else {
-                        errors += 1;
-                        LOG.error("unrecognized command: " + cmd);
-                    }
-                    if ((count += 1) % 10000 == 0) {
-                        LOG.info("processed {}, errors {}, queue-length {}", count, errors, writeQueue.size());
-                    }
-                } catch (InterruptedException e) {
-                    LOG.error("caught exception in queue.take, retrying: " + e);
-                } catch (IOException e) {
-                    LOG.error("caught IOException, exiting: ", e);
-                    break;
-                }
-            }
-            try {
-                os.close();
-            } catch (IOException e) {
-                LOG.error("caught IOException when closing output stream, ignoring ", e);
-
-            }
-            LOG.info("wal writer thread exiting - {}", getName());
-        }
     }
 
 }

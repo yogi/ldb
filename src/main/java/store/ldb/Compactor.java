@@ -33,7 +33,7 @@ public class Compactor {
                     Level level = levels.get(i);
                     final Level nextLevel = levels.get(i + 1);
                     compactLevel(level, nextLevel);
-                    sleepSilently();
+                    sleepSilently(SLEEP_BETWEEN_COMPACTIONS_MS);
                 }
             } catch (Exception e) {
                 LOG.error("caught exception in compact loop, ignoring and retrying", e);
@@ -43,8 +43,6 @@ public class Compactor {
     }
 
     private void compactLevel(Level fromLevel, Level toLevel) {
-        LOG.debug("compact level {} to {}", fromLevel, toLevel);
-
         if (compactionInProgress.get()) return;
 
         final List<Segment> fromSegments = takeAtMost(fromLevel.getSegmentsToCompact(), 10);
@@ -52,10 +50,10 @@ public class Compactor {
 
         List<Segment> toBeCompacted = addLists(fromSegments, toSegments);
         if (toBeCompacted.size() < minCompactionSegmentCount || toBeCompacted.stream().anyMatch(s -> !s.isReady())) {
-            LOG.debug("skipping... compact level {} to {}, toBeCompacted {}", fromLevel, toLevel, toBeCompacted.size());
             return;
         }
 
+        LOG.debug("compact level {} to {}", fromLevel, toLevel);
         try {
             compactionInProgress.set(true);
             compactAll(fromSegments, toLevel);
@@ -127,7 +125,7 @@ public class Compactor {
             toLevel.addSegment(segment);
         }
 
-        LOG.info("compacted segments {} to level {} in {} ms", segments.size(), toLevel, System.currentTimeMillis() - start);
+        LOG.info("compacted {} segments to level {} in {} ms", segments.size(), toLevel, System.currentTimeMillis() - start);
     }
 
     private static class SegmentScanner implements Comparable<SegmentScanner> {
@@ -188,9 +186,9 @@ public class Compactor {
         }
     }
 
-    private void sleepSilently() {
+    private void sleepSilently(int sleepBetweenCompactionsMs) {
         try {
-            Thread.sleep(SLEEP_BETWEEN_COMPACTIONS_MS);
+            Thread.sleep(sleepBetweenCompactionsMs);
         } catch (InterruptedException e) {
             // ignore
         }
