@@ -140,11 +140,14 @@ public class Level {
         String minKey = Collections.min(otherSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
         String maxKey = Collections.max(otherSegments.stream().map(Segment::getMaxKey).collect(Collectors.toList()));
 
-        return new ArrayList<>(this.segments).stream()
+        final List<Segment> list = new ArrayList<>(this.segments).stream()
                 .filter(segment -> between(segment.getMinKey(), minKey, maxKey)
                         || between(segment.getMaxKey(), minKey, maxKey)
                         || (lessThanOrEqual(segment.getMinKey(), minKey) && greaterThanOrEqual(segment.getMaxKey(), maxKey)))
                 .collect(Collectors.toList());
+
+        LOG.debug("for compaction found overlapping segments for minKey: {}, maxKey: {}, {} ", minKey, maxKey, list);
+        return list;
     }
 
     private boolean between(String s, String from, String to) {

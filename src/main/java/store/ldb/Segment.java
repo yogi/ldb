@@ -64,13 +64,8 @@ public class Segment {
         ready.set(true);
     }
 
-    public boolean isEmpty() {
-        return index.isEmpty();
-    }
-
     class SegmentWriter {
         private final DataOutputStream os;
-        private int count = 0;
         private long offset = 0;
         private long startTime;
         private long endTime;
@@ -96,7 +91,6 @@ public class Segment {
                 entry.writeTo(os);
                 index.put(entry.key, new ValuePosition(offset + entry.valueOffset(), entry.value.length()));
                 offset += entry.totalLength();
-                count += 1;
                 LOG.debug("wrote entry {} to segment {}", entry.key, fileName);
             } catch (IOException e) {
                 throw new RuntimeException(e);
