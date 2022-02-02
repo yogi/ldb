@@ -9,6 +9,8 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static java.lang.String.format;
+
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
     public static final Comparator<Segment> SEGMENT_NUM_DESC_COMPARATOR = (o1, o2) -> o2.num - o1.num;
@@ -53,11 +55,15 @@ public class Level {
     }
 
     public void addSegment(Segment segment) {
+        LOG.debug("addSegment {} to level {}, segments {}", segment.fileName, dirPathName(), segments);
         if (segment.isReady()) {
             throw new IllegalStateException("segment already ready: " + segment + " for level: " + this);
         }
         segment.markReady();
-        segments.add(segment);
+        if (!segments.add(segment)) {
+            throw new IllegalStateException(format("segment %s was not added to level %s\n", segment.fileName, dirPathName()));
+        }
+        LOG.debug("addSegment {} done to level {}, segments {}", segment.fileName, dirPathName(), segments);
     }
 
     private static String levelDirName(String dir, int num) {

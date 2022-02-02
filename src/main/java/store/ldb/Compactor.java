@@ -48,6 +48,10 @@ public class Compactor {
         final List<Segment> fromSegments = takeAtMost(fromLevel.getSegmentsToCompact(), 10);
         final List<Segment> toSegments = toLevel.getOverlappingSegments(fromSegments);
 
+        if (toSegments.size() > 0) {
+            LOG.debug("found overlapping segments: {}", toSegments);
+        }
+
         List<Segment> toBeCompacted = addLists(fromSegments, toSegments);
         if (toBeCompacted.size() < minCompactionSegmentCount || toBeCompacted.stream().anyMatch(s -> !s.isReady())) {
             return;
@@ -56,7 +60,7 @@ public class Compactor {
         LOG.debug("compact level {} to {}", fromLevel, toLevel);
         try {
             compactionInProgress.set(true);
-            compactAll(fromSegments, toLevel);
+            compactAll(toBeCompacted, toLevel);
             fromSegments.forEach(fromLevel::removeSegment);
             toSegments.forEach(toLevel::removeSegment);
             LOG.debug("done... compact level {} to {}, toBeCompacted {}", fromLevel, toLevel, toBeCompacted.size());
