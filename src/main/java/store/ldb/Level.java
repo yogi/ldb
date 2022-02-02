@@ -64,9 +64,9 @@ public class Level {
         return dir + File.separatorChar + "level" + num;
     }
 
-    static TreeMap<Integer, Level> loadLevels(String dir, int maxSegmentSize) {
+    static TreeMap<Integer, Level> loadLevels(String dir, int maxSegmentSize, int numLevels) {
         TreeMap<Integer, Level> levels = new TreeMap<>();
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < numLevels; i++) {
             final Comparator<Segment> segmentComparator = i == 0 ? SEGMENT_NUM_DESC_COMPARATOR : SEGMENT_KEY_ASC_COMPARATOR;
             Level level = new Level(dir, i, maxSegmentSize, segmentComparator);
             levels.put(i, level);

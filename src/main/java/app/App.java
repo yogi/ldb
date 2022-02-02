@@ -12,12 +12,11 @@ import java.util.Optional;
 
 public class App extends Jooby {
     public static final Logger LOG = LoggerFactory.getLogger(App.class);
-    private static final Class DB = LDB.class;
     private final Store store;
 
     {
         try {
-            store = (Store) DB.getDeclaredConstructor(String.class).newInstance("data/" + DB.getSimpleName().toLowerCase());
+            store = new LDB("data/ldb");
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

@@ -90,22 +90,25 @@ public class Compactor {
                 .filter(SegmentScanner::hasNext)
                 .collect(Collectors.toCollection(PriorityQueue::new));
 
-        Segment segment = toLevel.createNextSegment();
-        Segment.SegmentWriter writer = segment.getWriter();
+        Segment segment = null;
+        Segment.SegmentWriter writer = null;
         do {
             SegmentScanner scanner = scanners.peek();
             if (scanner == null) {
                 break;
             } else {
-                final KeyValueEntry entry = scanner.peek();
+                if (segment == null) {
+                    segment = toLevel.createNextSegment();
+                    writer = segment.getWriter();
+                }
 
+                KeyValueEntry entry = scanner.peek();
                 writer.write(entry);
-
                 if (writer.writtenBytes() > toLevel.maxSegmentSize()) {
                     writer.done();
                     toLevel.addSegment(segment);
-                    segment = toLevel.createNextSegment();
-                    writer = segment.getWriter();
+                    segment = null;
+                    writer = null;
                 }
 
                 PriorityQueue<SegmentScanner> nextScanners = new PriorityQueue<>();
@@ -115,13 +118,14 @@ public class Compactor {
                         nextScanners.add(scanner);
                     }
                 }
-
                 scanners = nextScanners;
             }
         } while (true);
 
-        writer.done();
-        if (!segment.isEmpty()) toLevel.addSegment(segment);
+        if (segment !=  null) {
+            writer.done();
+            toLevel.addSegment(segment);
+        }
 
         LOG.info("compacted segments {} to level {} in {} ms", segments.size(), toLevel, System.currentTimeMillis() - start);
     }

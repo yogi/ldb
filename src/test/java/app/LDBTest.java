@@ -20,8 +20,8 @@ public class LDBTest {
     }
 
     @Test
-    public void shouldFlushAndCompact() throws InterruptedException {
-        store = new LDB(basedir.getPath(), 1, 1);
+    public void shouldFlushAndCompactWith2Levels() throws InterruptedException {
+        store = new LDB(basedir.getPath(), 1, 1, 2);
 
         store.set("a", "b");
         assertEquals("b", store.get("a").orElseThrow());
@@ -29,7 +29,7 @@ public class LDBTest {
         assertFileDoesNotExist("tmp/ldb/level0/seg0");
 
         store.set("b", "c");
-        Thread.sleep(10);
+        Thread.sleep(100);
         assertEquals("b", store.get("a").orElseThrow());
         assertEquals("c", store.get("b").orElseThrow());
         assertFileDoesNotExist("tmp/ldb/wal0");
@@ -37,24 +37,6 @@ public class LDBTest {
         assertFileDoesNotExist("tmp/ldb/level0/seg0");
         assertFileExists("tmp/ldb/level1/seg0");
         assertFileExists("tmp/ldb/level1/seg1");
-        assertFileExists("tmp/ldb/level1/seg2");
-
-        store.set("c", "d");
-        store.set("d", "e"); // need the second set to trigger wal flush since wal was empty on previous set
-        Thread.sleep(10);
-        assertEquals("b", store.get("a").orElseThrow());
-        assertEquals("c", store.get("b").orElseThrow());
-        assertEquals("d", store.get("c").orElseThrow());
-        assertEquals("e", store.get("d").orElseThrow());
-        assertFileDoesNotExist("tmp/ldb/wal0");
-        assertFileDoesNotExist("tmp/ldb/wal1");
-        assertFileExists("tmp/ldb/wal2");
-        assertFileDoesNotExist("tmp/ldb/level0/seg0");
-        assertFileExists("tmp/ldb/level1/seg1");
-        assertFileExists("tmp/ldb/level1/seg2");
-        assertFileExists("tmp/ldb/level1/seg3");
-        assertFileExists("tmp/ldb/level1/seg4");
-        assertFileExists("tmp/ldb/level1/seg5");
     }
 
     private void assertFileExists(String pathname) {

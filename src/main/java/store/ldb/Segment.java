@@ -78,8 +78,10 @@ public class Segment {
         public SegmentWriter() {
             assertNotReady();
             try {
-                this.os = new DataOutputStream(new BufferedOutputStream(
-                        new FileOutputStream(fileName, true), 1024 * 8));
+                this.os = new DataOutputStream(
+                        new BufferedOutputStream(
+                                new FileOutputStream(fileName, true),
+                                1024 * 8));
             } catch (FileNotFoundException e) {
                 throw new RuntimeException(e);
             }

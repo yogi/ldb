@@ -15,6 +15,7 @@ public class LDB implements Store {
     public static final int MB = 1024 * 1025;
     public static final int DEFAULT_MAX_SEGMENT_SIZE = 5 * MB;
     public static final int DEFAULT_MIN_COMPACTION_SEGMENT_COUNT = 10;
+    public static final int DEFAULT_NUM_LEVELS = 2;
 
     private final String dir;
     private final TreeMap<Integer, Level> levels;
@@ -24,12 +25,12 @@ public class LDB implements Store {
     private volatile WriteAheadLog wal;
 
     public LDB(String dir) {
-        this(dir, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_MIN_COMPACTION_SEGMENT_COUNT);
+        this(dir, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_MIN_COMPACTION_SEGMENT_COUNT, DEFAULT_NUM_LEVELS);
     }
 
-    public LDB(String dir, int maxSegmentSize, int minCompactionSegmentCount) {
+    public LDB(String dir, int maxSegmentSize, int minCompactionSegmentCount, int numLevels) {
         this.dir = dir;
-        this.levels = Level.loadLevels(dir, maxSegmentSize);
+        this.levels = Level.loadLevels(dir, maxSegmentSize, numLevels);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
         this.compactor = Compactor.start(levels, minCompactionSegmentCount);
         this.memtable = new TreeMap<>();
