@@ -11,13 +11,16 @@ import java.util.stream.Collectors;
 public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
     public static final int SLEEP_BETWEEN_COMPACTIONS_MS = 10;
+
     private final TreeMap<Integer, Level> levels;
+    private final int minCompactionSegmentCount;
     private final Thread thread;
     private final AtomicBoolean stop;
-    private AtomicBoolean compactionInProgress = new AtomicBoolean();
+    private final AtomicBoolean compactionInProgress = new AtomicBoolean();
 
-    public Compactor(TreeMap<Integer, Level> levels) {
+    public Compactor(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
         this.levels = levels;
+        this.minCompactionSegmentCount = minCompactionSegmentCount;
         this.stop = new AtomicBoolean(false);
         this.thread = new Thread(this::compact, "compactor");
     }
@@ -40,13 +43,16 @@ public class Compactor {
     }
 
     private void compactLevel(Level fromLevel, Level toLevel) {
+        LOG.debug("compact level {} to {}", fromLevel, toLevel);
+
         if (compactionInProgress.get()) return;
 
         final List<Segment> fromSegments = takeAtMost(fromLevel.getSegmentsToCompact(), 10);
         final List<Segment> toSegments = toLevel.getOverlappingSegments(fromSegments);
 
         List<Segment> toBeCompacted = addLists(fromSegments, toSegments);
-        if (toBeCompacted.size() < 10 || toBeCompacted.stream().anyMatch(s -> !s.isReady())) {
+        if (toBeCompacted.size() < minCompactionSegmentCount || toBeCompacted.stream().anyMatch(s -> !s.isReady())) {
+            LOG.debug("skipping... compact level {} to {}, toBeCompacted {}", fromLevel, toLevel, toBeCompacted.size());
             return;
         }
 
@@ -55,6 +61,7 @@ public class Compactor {
             compactAll(fromSegments, toLevel);
             fromSegments.forEach(fromLevel::removeSegment);
             toSegments.forEach(toLevel::removeSegment);
+            LOG.debug("done... compact level {} to {}, toBeCompacted {}", fromLevel, toLevel, toBeCompacted.size());
         } finally {
             compactionInProgress.set(false);
         }
@@ -114,7 +121,7 @@ public class Compactor {
         } while (true);
 
         writer.done();
-        toLevel.addSegment(segment);
+        if (!segment.isEmpty()) toLevel.addSegment(segment);
 
         LOG.info("compacted segments {} to level {} in {} ms", segments.size(), toLevel, System.currentTimeMillis() - start);
     }
@@ -185,8 +192,8 @@ public class Compactor {
         }
     }
 
-    public static Compactor start(TreeMap<Integer, Level> levels) {
-        final Compactor compactor = new Compactor(levels);
+    public static Compactor start(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
+        final Compactor compactor = new Compactor(levels, minCompactionSegmentCount);
         compactor.start();
         return compactor;
     }

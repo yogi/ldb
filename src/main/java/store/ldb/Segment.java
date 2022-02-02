@@ -64,6 +64,10 @@ public class Segment {
         ready.set(true);
     }
 
+    public boolean isEmpty() {
+        return index.isEmpty();
+    }
+
     class SegmentWriter {
         private final DataOutputStream os;
         private int count = 0;
@@ -220,10 +224,7 @@ public class Segment {
 
     @Override
     public String toString() {
-        return "Segment{" +
-                "dir=" + dir +
-                ", num=" + num +
-                '}';
+        return fileName;
     }
 
 }

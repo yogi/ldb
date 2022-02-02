@@ -58,7 +58,7 @@ public class KeyValueEntry {
         }
 
         public static CompressionType fromCode(byte b) {
-            return Arrays.stream(values()).filter(compressionType -> compressionType.code == b).findFirst().get();
+            return Arrays.stream(values()).filter(compressionType -> compressionType.code == b).findFirst().orElseThrow();
         }
 
         public abstract byte[] uncompress(byte[] bytes);
@@ -114,12 +114,15 @@ public class KeyValueEntry {
 
         recordsWritten.incrementAndGet();
 
-        if (System.currentTimeMillis() - lastFlushTime > FLUSH_INTERVAL) { // even keeping this as zero reduces the number of flushes by a factor of 1000
+        // setting FLUSH_INTERVAL to as low as zero can reduce the number of flushes by a factor of 1000 in a high load environment
+        if (System.currentTimeMillis() - lastFlushTime > FLUSH_INTERVAL) {
             lastFlushTime = System.currentTimeMillis();
             flushCount.incrementAndGet();
             os.flush();
+//            if (fsync) {
+//                fos.getFD().sync();
+//            }
         }
-        //fos.getFD().sync();
     }
 
     public static long getRecordsWritten() {

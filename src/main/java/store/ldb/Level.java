@@ -123,10 +123,7 @@ public class Level {
 
     @Override
     public String toString() {
-        return "Level{" +
-                "dir=" + dir +
-                ", num=" + num +
-                '}';
+        return dirPathName();
     }
 
     public List<Segment> getSegmentsToCompact() {
