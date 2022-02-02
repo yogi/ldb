@@ -69,7 +69,7 @@ public class Compactor {
 
     private List<Segment> takeAtMost(List<Segment> segments, int max) {
         return segments.isEmpty() ?
-                List.of() :
+                Collections.emptyList() :
                 segments.subList(0, Math.min(segments.size(), max));
     }
 

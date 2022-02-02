@@ -125,7 +125,7 @@ public class WriteAheadLog {
     }
 
     public void append(SetCmd cmd) {
-        LOG.debug("append to queue {}", cmd.key);
+        LOG.debug("append {} to write-queue {}", cmd.key, walFileName());
         boolean done = false;
         int attempt = 0;
         do {
@@ -139,7 +139,7 @@ public class WriteAheadLog {
                 LOG.error("retrying append to queue for {}, attempts: {}, exception: {}", cmd.key, attempt, e);
             }
         } while (!done);
-        LOG.debug("append to queue done for key {} after {} attempts", cmd.key, attempt);
+        LOG.debug("done... append {} to write-queue {} after {} attempts", cmd.key, walFileName(), attempt);
     }
 
     @Override

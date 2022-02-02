@@ -137,7 +137,7 @@ public class Level {
         assertLevelIsKeySorted();
 
         if (this.segments.isEmpty() || otherSegments.isEmpty()) {
-            return List.of();
+            return Collections.emptyList();
         }
 
         String minKey = Collections.min(otherSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));

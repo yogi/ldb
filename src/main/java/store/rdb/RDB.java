@@ -38,7 +38,7 @@ public class RDB implements store.Store {
             throw new IllegalStateException("more than two wals found");
         }
         if (wals == null || wals.length == 0) {
-            return List.of(0);
+            return Collections.emptyList();
         }
         return Arrays.stream(wals)
                 .map(file -> Integer.parseInt(file.getName().replace("wal", "")))

@@ -45,7 +45,7 @@ public class Segment {
             writer.write(new KeyValueEntry((byte) 0, entry.getKey(), entry.getValue()));
         }
         writer.done();
-        LOG.info("write memtable to segment {} done: {} keys in {} ms", fileName, index.size(), writer.timeTaken());
+        LOG.info("done... write memtable to segment {}, {} keys in {} ms", fileName, index.size(), writer.timeTaken());
     }
 
     public SegmentWriter getWriter() {
