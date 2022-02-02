@@ -22,6 +22,16 @@ public class WriteAheadLog {
     private final AtomicInteger totalBytes = new AtomicInteger();
     private final Thread writerThread;
 
+    private enum CmdType {
+        Set(1),
+        ;
+        final int code;
+
+        CmdType(int code) {
+            this.code = code;
+        }
+    }
+
     public static WriteAheadLog init(String dirname, Level levelZero) {
         dir = dirname;
         int maxGen = replayExistingOnStartup(levelZero);
@@ -84,18 +94,6 @@ public class WriteAheadLog {
         return wal;
     }
 
-
-
-    private enum CmdType {
-        Set(1),
-        ;
-        final int code;
-
-        CmdType(int code) {
-            this.code = code;
-        }
-
-    }
     private String walFileName() {
         return dir + File.separatorChar + "wal" + gen;
     }
