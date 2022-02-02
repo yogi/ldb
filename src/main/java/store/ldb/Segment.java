@@ -12,158 +12,109 @@ public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
 
     private final File dir;
-    private final int num;
-    private final String fileName;
-    private final Map<String, ValuePosition> index = new TreeMap<>();
+    final int num;
+    final String fileName;
+    private final TreeMap<String, ValuePosition> index = new TreeMap<>();
     private final AtomicBoolean ready = new AtomicBoolean(false);
+    private final SegmentWriter writer;
     private int totalBytes;
 
     public Segment(File dir, int num) {
-        LOG.info("loading segment: {} - {}", dir.getPath(), num);
         this.dir = dir;
         this.num = num;
         this.fileName = dir.getPath() + File.separatorChar + "seg" + num;
+        this.writer = new SegmentWriter();
+        LOG.info("new segment: {}", fileName);
+    }
+
+    public static List<Segment> loadAll(File dir) {
+        return Arrays.stream(Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg"))))
+                .map(file -> Integer.parseInt(file.getName().replace("seg", "")))
+                .map(n -> {
+                    final Segment segment = new Segment(dir, n);
+                    segment.loadIndex();
+                    return segment;
+                })
+                .collect(Collectors.toList());
     }
 
     public void writeMemtable(TreeMap<String, String> memtable) {
         assertNotReady();
+        LOG.debug("write memtable to segment {}", fileName);
+        for (Map.Entry<String, String> entry : memtable.entrySet()) {
+            writer.write(new KeyValueEntry((byte) 0, entry.getKey(), entry.getValue()));
+        }
+        writer.done();
+        LOG.info("write memtable to segment {} done: {} keys in {} ms", fileName, index.size(), writer.timeTaken());
+    }
 
-        LOG.debug("write memtable to segment: {}", fileName);
+    public SegmentWriter getWriter() {
+        return writer;
+    }
 
-        long start = System.currentTimeMillis();
-        try {
-            DataOutputStream os = new DataOutputStream(new BufferedOutputStream(
-                    new FileOutputStream(fileName, true), 1024 * 8));
-            int count = 0;
-            long offset = 0;
-            for (Map.Entry<String, String> entry : memtable.entrySet()) {
-                String k = entry.getKey();
-                String v = entry.getValue();
-                KeyValueEntry keyValueEntry = new KeyValueEntry((byte) 0, k, v);
-                keyValueEntry.writeTo(os);
-                index.put(keyValueEntry.key, new ValuePosition(offset + keyValueEntry.valueOffset(), keyValueEntry.value.length()));
-                offset += keyValueEntry.totalLength();
+    public String getMaxKey() {
+        return index.lastEntry().getKey();
+    }
+
+    public String getMinKey() {
+        return index.firstEntry().getKey();
+    }
+
+    void markReady() {
+        ready.set(true);
+    }
+
+    class SegmentWriter {
+        private final DataOutputStream os;
+        private int count = 0;
+        private long offset = 0;
+        private long startTime;
+        private long endTime;
+
+        public SegmentWriter() {
+            assertNotReady();
+            try {
+                this.os = new DataOutputStream(new BufferedOutputStream(
+                        new FileOutputStream(fileName, true), 1024 * 8));
+            } catch (FileNotFoundException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        public void write(KeyValueEntry entry) {
+            if (startTime == 0) {
+                index.clear();
+                startTime = System.currentTimeMillis();
+            }
+            try {
+                entry.writeTo(os);
+                index.put(entry.key, new ValuePosition(offset + entry.valueOffset(), entry.value.length()));
+                offset += entry.totalLength();
                 count += 1;
-                LOG.debug("wrote entry to segment {}", k);
-            }
-            os.close();
-
-            LOG.info("write segment {} done: {} keys in {} ms", fileName, count, System.currentTimeMillis() - start);
-
-            ready.set(true);
-        } catch (IOException e) {
-            LOG.error("creating segment... error", e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    public void compactAll(List<Segment> segments) {
-        assertNotReady();
-
-        LOG.debug("compacting {} segments to segment {}", segments.size(), fileName);
-
-        try {
-            DataOutputStream os = new DataOutputStream(new BufferedOutputStream(
-                    new FileOutputStream(fileName, true), 1024 * 8));
-
-            int count = 0;
-            long offset = 0;
-            long start = System.currentTimeMillis();
-
-            PriorityQueue<SegmentScanner> scanners = segments.stream()
-                    .map(SegmentScanner::new)
-                    .filter(SegmentScanner::hasNext)
-                    .collect(Collectors.toCollection(PriorityQueue::new));
-
-            do {
-                PriorityQueue<SegmentScanner> nextScanners = new PriorityQueue<>();
-
-                SegmentScanner scanner = scanners.peek();
-                if (scanner == null) {
-                    break;
-                } else {
-                    final KeyValueEntry entry = scanner.peek();
-
-                    entry.writeTo(os);
-                    index.put(entry.key, new ValuePosition(offset + entry.valueOffset(), entry.value.length()));
-                    offset += entry.totalLength();
-                    count += 1;
-
-                    while ((scanner = scanners.poll()) != null) {
-                        scanner.moveToNextIfEquals(entry.key);
-                        if (scanner.hasNext()) {
-                            nextScanners.add(scanner);
-                        }
-                    }
-
-                    scanners = nextScanners;
-                }
-            } while (true);
-
-            os.close();
-            LOG.info("compacting {} segments to segment {} done: {} keys in {} ms", segments.size(), fileName, count, System.currentTimeMillis() - start);
-
-            ready.set(true);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static class SegmentScanner implements Comparable<SegmentScanner> {
-        private final Segment segment;
-        private final DataInputStream is;
-        private KeyValueEntry next;
-
-        public SegmentScanner(Segment segment) {
-            try {
-                this.segment = segment;
-                is = new DataInputStream(new BufferedInputStream(new FileInputStream(segment.fileName)));
-                if (is.available() > 0) {
-                    next = KeyValueEntry.readFrom(is);
-                }
+                LOG.debug("wrote entry {} to segment {}", entry.key, fileName);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
 
-        @Override
-        public int compareTo(Segment.SegmentScanner other) {
-            int result = peek().key.compareTo(other.peek().key);
-            if (result != 0) {
-                return result;
+        public void done() {
+            if (ready.get()) {
+                return;
             }
-            return other.segment.num - segment.num;
-        }
-
-        private KeyValueEntry peek() {
-            return next;
-        }
-
-        public boolean hasNext() {
-            return next != null;
-        }
-
-        public void moveToNextIfEquals(String key) {
             try {
-                if (key.equals(next.key)) {
-                    if (is.available() > 0) {
-                        next = KeyValueEntry.readFrom(is);
-                    } else {
-                        is.close();
-                        next = null;
-                    }
-                }
+                os.close();
+                endTime = System.currentTimeMillis();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
 
-        @Override
-        public String toString() {
-            return "SegmentScanner{" +
-                    "segment=" + segment.num +
-                    ", next=" + (next == null ? "null" : next.key) +
-                    '}';
+        public long writtenBytes() {
+            return offset;
+        }
+
+        public long timeTaken() {
+            return endTime - startTime;
         }
     }
 
@@ -192,23 +143,25 @@ public class Segment {
             totalBytes = offset;
             LOG.debug("loaded from segment: {} keys, store-size: {}, in {} ms", count, index.size(), (System.currentTimeMillis() - start));
             is.close();
-
-            ready.set(true);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
+    private void assertReady() {
+        if (!isReady()) {
+            throw new IllegalStateException("segment not ready");
+        }
+    }
+
     private void assertNotReady() {
-        if (ready.get()) {
-            throw new IllegalStateException("cannot modify an existing segment");
+        if (isReady()) {
+            throw new IllegalStateException("segment is ready");
         }
     }
 
     public Optional<String> get(String key) {
-        if (!ready.get()) {
-            return Optional.empty();
-        }
+        assertReady();
         final ValuePosition pos = index.get(key);
         if (pos == null) {
             return Optional.empty();
@@ -236,14 +189,8 @@ public class Segment {
         return totalBytes;
     }
 
-    public void replayTo(Map<String, String> map) {
-        index.forEach((key, valuePosition) -> map.put(key, get(key).get()));
-    }
-
     public void delete() {
-        if (!ready.get()) {
-            throw new IllegalStateException("cannot delete a segment that is not ready: ");
-        }
+        assertReady();
         File file = new File(fileName);
         LOG.info("delete segment file: " + file.getPath());
         if (file.exists()) {

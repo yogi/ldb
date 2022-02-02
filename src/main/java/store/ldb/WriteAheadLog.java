@@ -13,94 +13,51 @@ import java.util.stream.Collectors;
 
 public class WriteAheadLog {
     public static final Logger LOG = LoggerFactory.getLogger(WriteAheadLog.class);
+    private static final AtomicInteger nextGen = new AtomicInteger();
+    static String dir;
 
     final int gen;
-    final String dir;
-    private final LinkedBlockingQueue<Object> queue;
+    private final LinkedBlockingQueue<Object> writeQueue;
     private final AtomicBoolean stop = new AtomicBoolean(false);
     private final AtomicInteger totalBytes = new AtomicInteger();
+    private final Thread writerThread;
 
-    public static WriteAheadLog init(String dir, Level levelZero) {
-        int nextGen = 0;
-        LinkedList<WriteAheadLog> wals = loadWals(dir);
-        if (!wals.isEmpty()) {
-            TreeMap<String, String> map = new TreeMap<>();
-            wals.forEach(wal -> wal.replay(map));
-            if (map.size() > 0) {
-                levelZero.flushMemtable(map);
-            }
-            wals.forEach(WriteAheadLog::delete);
-            nextGen = wals.getLast().gen + 1;
-        }
-        return new WriteAheadLog(dir, nextGen);
+    public static WriteAheadLog init(String dirname, Level levelZero) {
+        dir = dirname;
+        int maxGen = replayExistingOnStartup(levelZero);
+        nextGen.set(maxGen == 0 ? 0 : maxGen + 1);
+        return startNext();
     }
 
-    public WriteAheadLog(String dir, int gen) {
-        LOG.info("init wal {} {}", dir, gen);
+    private static int replayExistingOnStartup(Level levelZero) {
+        LinkedList<WriteAheadLog> wals =
+                Arrays.stream(Objects.requireNonNull(new File(dir)
+                                .listFiles((dir1, name) -> name.startsWith("wal"))))
+                        .map(file -> Integer.parseInt(file.getName().replace("wal", "")))
+                        .sorted()
+                        .map(WriteAheadLog::new)
+                        .collect(Collectors.toCollection(LinkedList::new));
+        if (wals.isEmpty()) {
+            return 0;
+        }
+        TreeMap<String, String> memtable = new TreeMap<>();
+        wals.forEach(wal -> wal.replay(memtable));
+        if (memtable.size() > 0) {
+            levelZero.flushMemtable(memtable);
+        }
+        wals.forEach(WriteAheadLog::delete);
+        return wals.getLast().gen;
+    }
 
-        this.gen = gen;
-
-        this.queue = new LinkedBlockingQueue<>(1000);
-
-        this.dir = dir;
-        Thread writerThread = new Thread(() -> {
-            LOG.info("wal writer thread started");
-
-            FileOutputStream fos;
-            DataOutputStream os;
-            try {
-                fos = new FileOutputStream(walFileName(), true);
-                os = new DataOutputStream(new BufferedOutputStream(fos, 1024 * 8));
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-
-            int count = 0;
-            int errors = 0;
-            while (true) {
-                if (stop.get() && queue.isEmpty()) {
-                    break;
-                }
-                try {
-                    Object cmd = queue.take();
-                    if (cmd instanceof SetCmd) {
-                        SetCmd setCmd = (SetCmd) cmd;
-                        LOG.debug("appending SetCmd key: {}", setCmd.key);
-                        KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.code, setCmd.key, setCmd.value);
-                        entry.writeTo(os);
-                        totalBytes.addAndGet(entry.totalLength());
-                    } else {
-                        errors += 1;
-                        LOG.error("unrecognized command: " + cmd);
-                    }
-                    if ((count += 1) % 10000 == 0) {
-                        LOG.info("processed {}, errors {}, queue-length {}", count, errors, queue.size());
-                    }
-                } catch (InterruptedException e) {
-                    LOG.error("caught exception in queue.take, retrying: " + e);
-                } catch (IOException e) {
-                    LOG.error("caught IOException, exiting: ", e);
-                    break;
-                }
-            }
-            try {
-                os.close();
-            } catch (IOException e) {
-                LOG.error("caught IOException when closing output stream, ignoring ", e);
-
-            }
-            LOG.info("wal writer thread exiting");
-        });
+    private void start() {
         writerThread.start();
     }
 
-    public static LinkedList<WriteAheadLog> loadWals(String dir) {
-        return Arrays.stream(Objects.requireNonNull(new File(dir)
-                        .listFiles((dir1, name) -> name.startsWith("wal"))))
-                .map(file -> Integer.parseInt(file.getName().replace("wal", "")))
-                .sorted()
-                .map(gen -> new WriteAheadLog(dir, gen))
-                .collect(Collectors.toCollection(LinkedList::new));
+    private WriteAheadLog(int gen) {
+        this.gen = gen;
+        LOG.info("create {}", walFileName());
+        this.writeQueue = new LinkedBlockingQueue<>(1000);
+        this.writerThread = new WriterThread("wal" + gen + "-writer");
     }
 
     public void stop() {
@@ -121,23 +78,26 @@ public class WriteAheadLog {
         return totalBytes.get();
     }
 
-    public WriteAheadLog createNext() {
-        return new WriteAheadLog(dir, gen + 1);
+    public static WriteAheadLog startNext() {
+        final WriteAheadLog wal = new WriteAheadLog(nextGen.getAndIncrement());
+        wal.start();
+        return wal;
     }
+
+
 
     private enum CmdType {
         Set(1),
         ;
-
         final int code;
 
         CmdType(int code) {
             this.code = code;
         }
-    }
 
+    }
     private String walFileName() {
-        return this.dir + File.separatorChar + "wal" + gen;
+        return dir + File.separatorChar + "wal" + gen;
     }
 
     void replay(SortedMap<String, String> memtable) {
@@ -174,11 +134,86 @@ public class WriteAheadLog {
             }
             try {
                 attempt += 1;
-                done = queue.offer(cmd, 10, TimeUnit.MILLISECONDS);
+                done = writeQueue.offer(cmd, 10, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 LOG.error("retrying append to queue for {}, attempts: {}, exception: {}", cmd.key, attempt, e);
             }
         } while (!done);
         LOG.debug("append to queue done for key {} after {} attempts", cmd.key, attempt);
     }
+
+    @Override
+    public String toString() {
+        return walFileName();
+    }
+
+    private class WriterThread extends Thread {
+        public WriterThread(String name) {
+            super(name);
+        }
+
+        @Override
+        public void run() {
+            LOG.info("wal writer thread started - {}", getName());
+
+            FileOutputStream fos;
+            DataOutputStream os;
+            try {
+                fos = new FileOutputStream(walFileName(), true);
+                os = new DataOutputStream(new BufferedOutputStream(fos, 1024 * 8));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+
+            int count = 0;
+            int errors = 0;
+            while (true) {
+                if (stop.get() && writeQueue.isEmpty()) {
+                    break;
+                }
+                try {
+                    Object cmd = writeQueue.take();
+                    if (cmd instanceof SetCmd) {
+                        SetCmd setCmd = (SetCmd) cmd;
+                        LOG.debug("appending SetCmd key: {}", setCmd.key);
+                        KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.code, setCmd.key, setCmd.value);
+                        entry.writeTo(os);
+                        totalBytes.addAndGet(entry.totalLength());
+                    } else {
+                        errors += 1;
+                        LOG.error("unrecognized command: " + cmd);
+                    }
+                    if ((count += 1) % 10000 == 0) {
+                        LOG.info("processed {}, errors {}, queue-length {}", count, errors, writeQueue.size());
+                    }
+                } catch (InterruptedException e) {
+                    LOG.error("caught exception in queue.take, retrying: " + e);
+                } catch (IOException e) {
+                    LOG.error("caught IOException, exiting: ", e);
+                    break;
+                }
+            }
+            try {
+                os.close();
+            } catch (IOException e) {
+                LOG.error("caught IOException when closing output stream, ignoring ", e);
+
+            }
+            LOG.info("wal writer thread exiting - {}", getName());
+        }
+    }
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+

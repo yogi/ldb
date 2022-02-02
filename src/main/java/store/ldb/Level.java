@@ -5,56 +5,70 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
-    public static final int MB = 1024 * 1024;
+    public static final Comparator<Segment> SEGMENT_NUM_DESC_COMPARATOR = (o1, o2) -> o2.num - o1.num;
+    public static final Comparator<Segment> SEGMENT_KEY_ASC_COMPARATOR = Comparator.comparing(Segment::getMinKey);
 
     private final File dir;
     private final int num;
-    private final LinkedBlockingDeque<Segment> segments;
-    private final ReentrantLock lock;
-    private AtomicBoolean compactionInProgress = new AtomicBoolean();
+    private final int maxSegmentSize;
+    private final ConcurrentSkipListSet<Segment> segments;
+    private final AtomicInteger nextSegmentNumber;
+    private final Comparator<Segment> segmentComparator;
 
-    public Level(String dirName, int num) {
-        LOG.info("loading level: {}", num);
+    public Level(String dirName, int num, int maxSegmentSize, Comparator<Segment> segmentComparator) {
+        LOG.info("create level: {}", num);
         this.num = num;
-        this.dir = new File(levelDirName(dirName, num));
+        this.dir = initDir(dirName, num);
+        this.maxSegmentSize = maxSegmentSize;
+        this.segmentComparator = segmentComparator;
+        this.segments = new ConcurrentSkipListSet<>(segmentComparator);
+        Segment.loadAll(dir).forEach(this::addSegment);
+        nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
+    }
+
+    private static int initNextSegmentNumber(Collection<Segment> segments) {
+        return segments.isEmpty() ?
+                0 :
+                Collections.max(segments.stream().map(s -> s.num).collect(Collectors.toList()));
+    }
+
+    private static File initDir(String dirName, int num) {
+        final File dir = new File(levelDirName(dirName, num));
         if (!dir.exists()) {
             if (!dir.mkdirs()) {
                 throw new RuntimeException("couldn't create level dir: " + num);
             }
         }
-
-        this.segments = loadSegments(dir);
-        lock = new ReentrantLock();
+        return dir;
     }
 
-    public static LinkedBlockingDeque<Segment> loadSegments(File dir) {
-        final Comparator<Object> comparator = Comparator.comparingInt(value -> (Integer) value).reversed();
-        return Arrays.stream(Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg"))))
-                .map(file -> Integer.parseInt(file.getName().replace("seg", "")))
-                .sorted(comparator)
-                .map(n -> {
-                    final Segment segment = new Segment(dir, n);
-                    segment.loadIndex();
-                    return segment;
-                })
-                .collect(Collectors.toCollection(LinkedBlockingDeque::new));
+    public Segment createNextSegment() {
+        return new Segment(dir, nextSegmentNumber());
     }
 
-    private String levelDirName(String dir, int num) {
+    public void addSegment(Segment segment) {
+        if (segment.isReady()) {
+            throw new IllegalStateException("segment already ready: " + segment + " for level: " + this);
+        }
+        segment.markReady();
+        segments.add(segment);
+    }
+
+    private static String levelDirName(String dir, int num) {
         return dir + File.separatorChar + "level" + num;
     }
 
-    static TreeMap<Integer, Level> loadLevels(String dir) {
+    static TreeMap<Integer, Level> loadLevels(String dir, int maxSegmentSize) {
         TreeMap<Integer, Level> levels = new TreeMap<>();
         for (int i = 0; i < 2; i++) {
-            Level level = new Level(dir, i);
+            final Comparator<Segment> segmentComparator = i == 0 ? SEGMENT_NUM_DESC_COMPARATOR : SEGMENT_KEY_ASC_COMPARATOR;
+            Level level = new Level(dir, i, maxSegmentSize, segmentComparator);
             levels.put(i, level);
         }
         return levels;
@@ -62,7 +76,7 @@ public class Level {
 
     public Optional<String> get(String key) {
         for (Segment segment : segments) {
-            final Optional<String> value = segment.get(key);
+            Optional<String> value = segment.get(key);
             if (value.isPresent()) {
                 return value;
             }
@@ -71,23 +85,13 @@ public class Level {
     }
 
     public void flushMemtable(TreeMap<String, String> memtable) {
-        final Segment segment;
-        lock.lock();
-        try {
-            int segmentNumber = nextSegmentNumber();
-            segment = new Segment(dir, segmentNumber);
-            segments.addFirst(segment);
-        } finally {
-            lock.unlock();
-        }
+        Segment segment = createNextSegment();
         segment.writeMemtable(memtable);
+        addSegment(segment);
     }
 
     private int nextSegmentNumber() {
-        if (segments.isEmpty()) {
-            return 0;
-        }
-        return segments.getFirst().getNum() + 1;
+        return nextSegmentNumber.getAndIncrement();
     }
 
     public String dirPathName() {
@@ -98,58 +102,74 @@ public class Level {
         return segments.stream().mapToLong(Segment::keyCount).sum();
     }
 
+    public long totalBytes() {
+        return segments.stream().mapToLong(Segment::totalBytes).sum();
+    }
+
     public int getNum() {
         return num;
     }
 
-    public void compact() {
-        if (compactionInProgress.get()) {
-            return;
-        }
-
-        try {
-            lock.lock();
-            final Segment segment;
-            final List<Segment> segmentsToCompact = new ArrayList<>(new ArrayList<>(segments));
-            try {
-                if (segmentsToCompact.size() < 10) {
-                    return;
-                }
-                if (segmentsToCompact.stream().anyMatch(s -> !s.isReady())) {
-                    return;
-                }
-                compactionInProgress.set(true);
-                int segmentNumber = nextSegmentNumber();
-                segment = new Segment(dir, segmentNumber);
-                segments.addFirst(segment);
-            } finally {
-                lock.unlock();
-            }
-
-            LOG.info("compacting level: {}, segments: {}", num, segmentsToCompact.size());
-            segment.compactAll(segmentsToCompact);
-
-            lock.lock();
-            try {
-                for (Segment seg : segmentsToCompact) {
-                    removeSegment(seg);
-                    seg.delete();
-                }
-            } finally {
-                lock.unlock();
-            }
-        } finally {
-            compactionInProgress.set(false);
-        }
-    }
-
-    private void removeSegment(Segment segment) {
+    public void removeSegment(Segment segment) {
         if (!segments.remove(segment)) {
             throw new IllegalStateException("could not remove segment: " + segment);
         }
+        segment.delete();
     }
 
     public long maxSegmentSize() {
-        return ((long) Math.pow(10, num + 1)) * MB;
+        return maxSegmentSize;
+    }
+
+    @Override
+    public String toString() {
+        return "Level{" +
+                "dir=" + dir +
+                ", num=" + num +
+                '}';
+    }
+
+    public List<Segment> getSegmentsToCompact() {
+        return segments.stream().filter(Segment::isReady).collect(Collectors.toList());
+    }
+
+    public List<Segment> getOverlappingSegments(List<Segment> otherSegments) {
+        assertLevelIsKeySorted();
+
+        if (this.segments.isEmpty() || otherSegments.isEmpty()) {
+            return List.of();
+        }
+
+        String minKey = Collections.min(otherSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
+        String maxKey = Collections.max(otherSegments.stream().map(Segment::getMaxKey).collect(Collectors.toList()));
+
+        return new ArrayList<>(this.segments).stream()
+                .filter(segment -> between(segment.getMinKey(), minKey, maxKey)
+                        || between(segment.getMaxKey(), minKey, maxKey)
+                        || (lessThanOrEqual(segment.getMinKey(), minKey) && greaterThanOrEqual(segment.getMaxKey(), maxKey)))
+                .collect(Collectors.toList());
+    }
+
+    private boolean between(String s, String from, String to) {
+        return greaterThanOrEqual(s, from) && lessThanOrEqual(s, to);
+    }
+
+    private boolean greaterThanOrEqual(String s, String other) {
+        return s.compareTo(other) >= 0;
+    }
+
+    private boolean lessThanOrEqual(String s, String other) {
+        return s.compareTo(other) <= 0;
+    }
+
+    private void assertLevelIsKeySorted() {
+        if (SEGMENT_KEY_ASC_COMPARATOR != segmentComparator) {
+            throw new IllegalStateException("can't get overlapping segments of a level thsi is not key sorted");
+        }
+    }
+
+    public int segmentCount() {
+        return segments.size();
     }
 }
+

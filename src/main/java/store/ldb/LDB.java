@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class LDB implements Store {
     public static final Logger LOG = LoggerFactory.getLogger(LDB.class);
+    public static final int MB = 1024 * 1025;
+    public static final int DEFAULT_MAX_SEGMENT_SIZE = 5 * MB;
 
     private final String dir;
     private final TreeMap<Integer, Level> levels;
@@ -21,8 +23,12 @@ public class LDB implements Store {
     private volatile WriteAheadLog wal;
 
     public LDB(String dir) {
+        this(dir, DEFAULT_MAX_SEGMENT_SIZE);
+    }
+
+    public LDB(String dir, int maxSegmentSize) {
         this.dir = dir;
-        this.levels = Level.loadLevels(dir);
+        this.levels = Level.loadLevels(dir, maxSegmentSize);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
         this.compactor = Compactor.start(levels);
         this.memtable = new TreeMap<>();
@@ -32,7 +38,6 @@ public class LDB implements Store {
             wal.stop();
             compactor.stop();
         }));
-
     }
 
     public synchronized void set(String key, String value) {
@@ -50,7 +55,6 @@ public class LDB implements Store {
         for (Level level : levels.values()) {
             Optional<String> value = level.get(key);
             if (value.isPresent()) {
-                LOG.debug("get found {} in level", level.dirPathName());
                 return value;
             }
         }
@@ -65,9 +69,11 @@ public class LDB implements Store {
             WriteAheadLog oldWal = wal;
             TreeMap<String, String> oldMemtable = memtable;
 
-            wal = oldWal.createNext();
+            LOG.debug("wal threshold crossed, init new wal and memtable before flushing old one {}", oldWal);
+            wal = WriteAheadLog.startNext();
             memtable = new TreeMap<>();
 
+            LOG.debug("flush segment from memtable for wal {}", oldWal);
             try {
                 oldWal.stop();
                 levels.get(0).flushMemtable(oldMemtable);
@@ -87,6 +93,12 @@ public class LDB implements Store {
         Map<String, Object> stats = new HashMap<>();
         stats.put("memtable.size", memtable.size());
         stats.put("db.keys", levels.values().stream().mapToLong(Level::keyCount).sum());
+        stats.put("db.totalBytes", levels.values().stream().mapToLong(Level::totalBytes).sum());
+        levels.values().forEach(level -> {
+            stats.put(level.dirPathName() + ".segments", level.segmentCount());
+            stats.put(level.dirPathName() + ".keyCount", level.keyCount());
+            stats.put(level.dirPathName() + ".totalBytes", level.totalBytes());
+        });
         return stats;
     }
 

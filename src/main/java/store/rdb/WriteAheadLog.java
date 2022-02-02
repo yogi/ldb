@@ -92,7 +92,7 @@ public class WriteAheadLog {
                 }
             }
             System.out.println("wal writer thread exiting");
-        });
+        }, "wal-writer");
         writerThread.start();
     }
 
