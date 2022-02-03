@@ -15,7 +15,10 @@ import static java.lang.String.format;
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
     public static final Comparator<Segment> SEGMENT_NUM_DESC_COMPARATOR = (o1, o2) -> o2.num - o1.num;
-    public static final Comparator<Segment> SEGMENT_KEY_ASC_COMPARATOR = Comparator.comparing(Segment::getMinKey).thenComparing(Segment::getNum);
+    public static final Comparator<Segment> SEGMENT_KEY_ASC_COMPARATOR =
+            Comparator.comparing(Segment::getMinKey)
+                    .thenComparing(Segment::getMaxKey)
+                    .thenComparing(Segment::getNum);
 
     private final File dir;
     private final int num;
@@ -34,6 +37,7 @@ public class Level {
         this.segments = new TreeSet<>(segmentComparator);
         Segment.loadAll(dir).forEach(this::addSegment);
         nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
+        segments.forEach(segment -> LOG.info("level {} segment {}", num, segment));
     }
 
     private static int initNextSegmentNumber(Collection<Segment> segments) {

@@ -51,7 +51,7 @@ public class Compactor {
                 pause.release();
                 return;
             } catch (InterruptedException e) {
-                ; // retry acquire
+                // retry acquire
             }
         }
     }
