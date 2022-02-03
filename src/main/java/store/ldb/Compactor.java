@@ -3,7 +3,10 @@ package store.ldb;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -13,23 +16,60 @@ public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
     public static final int SLEEP_BETWEEN_COMPACTIONS_MS = 10;
 
-    private final TreeMap<Integer, Level> levels;
+    private static List<Compactor> compactors;
+
+    private final Level level;
+    private final Level nextLevel;
     private final int minCompactionSegmentCount;
     private final Thread thread;
     private final AtomicBoolean stop = new AtomicBoolean();
     private final AtomicBoolean compactionInProgress = new AtomicBoolean();
     private final Semaphore pause = new Semaphore(1);
 
-    public static Compactor start(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
-        final Compactor compactor = new Compactor(levels, minCompactionSegmentCount);
-        compactor.start();
-        return compactor;
+    public static void startAll(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
+        compactors = new ArrayList<>();
+        for (int i = 0; i < levels.size() - 1; i++) {
+            Compactor compactor = new Compactor(levels.get(i), levels.get(i + 1), minCompactionSegmentCount);
+            compactors.add(compactor);
+            compactor.start();
+        }
     }
 
-    public Compactor(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
-        this.levels = levels;
+    public static void stopAll() {
+        compactors.forEach(Compactor::stop);
+    }
+
+    public static void pauseAll() {
+        compactors.forEach(Compactor::pause);
+    }
+
+    public static void unpauseAll() {
+        compactors.forEach(Compactor::unpause);
+    }
+
+    public Compactor(Level level, Level nextLevel, int minCompactionSegmentCount) {
+        this.level = level;
+        this.nextLevel = nextLevel;
         this.minCompactionSegmentCount = minCompactionSegmentCount;
-        this.thread = new Thread(this::compact, "compactor");
+        this.thread = new Thread(this::compact, "compactor-" + level.getNum());
+    }
+
+    private void compact() {
+        LOG.info("started compaction loop");
+        while (!stop.get()) {
+            try {
+                waitIfPaused();
+                runCompaction();
+                sleepSilently(SLEEP_BETWEEN_COMPACTIONS_MS);
+            } catch (Exception e) {
+                LOG.error("caught exception in compact loop, ignoring and retrying", e);
+            }
+        }
+        LOG.info("compaction loop stopped");
+    }
+
+    public static void runCompaction(int levelNum) {
+        compactors.get(levelNum).runCompaction();
     }
 
     private void start() {
@@ -45,7 +85,7 @@ public class Compactor {
     }
 
     private void waitIfPaused() {
-        while(true) {
+        while (true) {
             try {
                 pause.acquire();
                 pause.release();
@@ -60,49 +100,27 @@ public class Compactor {
         stop.set(true);
     }
 
-    private void compact() {
-        LOG.info("started compaction loop");
-        while (!stop.get()) {
-            try {
-                for (int i = 0; i < levels.values().size() - 1; i++) {
-                    waitIfPaused();
-                    runCompaction(i);
-                    sleepSilently(SLEEP_BETWEEN_COMPACTIONS_MS);
-                }
-            } catch (Exception e) {
-                LOG.error("caught exception in compact loop, ignoring and retrying", e);
-            }
-        }
-        LOG.info("compaction loop stopped");
-    }
-
-    void runCompaction(int levelNum) {
-        Level level = levels.get(levelNum);
-        final Level nextLevel = levels.get(levelNum + 1);
-        compactLevel(level, nextLevel);
-    }
-
-    private void compactLevel(Level fromLevel, Level toLevel) {
+    void runCompaction() {
         if (compactionInProgress.get()) return;
 
-        final List<Segment> fromSegments = takeAtMost(fromLevel.getSegmentsForCompaction(), minCompactionSegmentCount);
+        final List<Segment> fromSegments = level.markSegmentsForCompaction(minCompactionSegmentCount);
         if (fromSegments.isEmpty()) return;
 
         final String minKey = Collections.min(fromSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
         final String maxKey = Collections.max(fromSegments.stream().map(Segment::getMaxKey).collect(Collectors.toList()));
-        final List<Segment> overlappingSegments = toLevel.getOverlappingSegments(minKey, maxKey);
+        final List<Segment> overlappingSegments = nextLevel.markOverlappingSegmentsForCompaction(minKey, maxKey);
 
         List<Segment> toBeCompacted = addLists(fromSegments, overlappingSegments);
-        if (toBeCompacted.size() < minCompactionSegmentCount) return;
+        if (toBeCompacted.isEmpty()) return;
 
-        LOG.debug("compact {} + {} overlapping-segments from level {} to {} - minKey {}, maxKey {}",
-                fromSegments.size(), overlappingSegments.size(), fromLevel, toLevel, minKey, maxKey);
+        LOG.debug("compact {} + {} (of {}) overlapping-segments from level {} to {} - minKey {}, maxKey {}",
+                fromSegments.size(), overlappingSegments.size(), nextLevel.segmentCount(), level, nextLevel, minKey, maxKey);
         try {
             long start = System.currentTimeMillis();
             compactionInProgress.set(true);
-            compactAll(toBeCompacted, toLevel);
-            fromSegments.forEach(fromLevel::removeSegment);
-            overlappingSegments.forEach(toLevel::removeSegment);
+            compactAll(toBeCompacted, nextLevel);
+            fromSegments.forEach(level::removeSegment);
+            overlappingSegments.forEach(nextLevel::removeSegment);
             final long timeTaken = System.currentTimeMillis() - start;
             LOG.debug("compaction done total-segments {} in {} ms", toBeCompacted.size(), timeTaken);
         } finally {

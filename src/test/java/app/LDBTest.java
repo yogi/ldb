@@ -7,6 +7,7 @@ import store.ldb.LDB;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -23,7 +24,7 @@ public class LDBTest {
     }
 
     @Test
-    public void testLevelZeroCompactionsHappenFromOldestToNewest() throws InterruptedException {
+    public void testLevelZeroCompactionsHappenFromOldestToNewest() {
         store = new LDB(basedir.getPath(), 1, 1, 2);
         store.pauseCompactor();
 
@@ -43,7 +44,7 @@ public class LDBTest {
     }
 
     @Test
-    public void testTwoLevelOverlappingCompactions() throws InterruptedException {
+    public void testTwoLevelOverlappingCompactions() {
         store = new LDB(basedir.getPath(), 1, 1, 2);
         store.pauseCompactor();
 

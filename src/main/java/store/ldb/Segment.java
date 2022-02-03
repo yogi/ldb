@@ -18,6 +18,7 @@ public class Segment {
     final String fileName;
     private final TreeMap<String, ValuePosition> index = new TreeMap<>();
     private final AtomicBoolean ready = new AtomicBoolean(false);
+    private AtomicBoolean markedForCompaction = new AtomicBoolean();
     private final SegmentWriter writer;
     private int totalBytes;
 
@@ -64,6 +65,14 @@ public class Segment {
 
     void markReady() {
         ready.set(true);
+    }
+
+    public void markForCompaction() {
+        markedForCompaction.set(true);
+    }
+
+    public boolean isMarkedForCompaction() {
+        return markedForCompaction.get();
     }
 
     class SegmentWriter {

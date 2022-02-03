@@ -22,7 +22,6 @@ public class LDB implements Store {
     private final String dir;
     private final TreeMap<Integer, Level> levels;
     private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
-    private final Compactor compactor;
     private volatile TreeMap<String, String> memtable;
     private volatile WriteAheadLog wal;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -35,13 +34,13 @@ public class LDB implements Store {
         this.dir = dir;
         this.levels = Level.loadLevels(dir, maxSegmentSize, numLevels);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
-        this.compactor = Compactor.start(levels, minCompactionSegmentCount);
+        Compactor.startAll(levels, minCompactionSegmentCount);
         this.memtable = new TreeMap<>();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             LOG.info("shutting down");
             wal.stop();
-            compactor.stop();
+            Compactor.stopAll();
         }));
     }
 
@@ -118,14 +117,14 @@ public class LDB implements Store {
     }
 
     public void pauseCompactor() {
-        compactor.pause();
+        Compactor.pauseAll();
     }
 
     public void unpauseCompactor() {
-        compactor.unpause();
+        Compactor.unpauseAll();
     }
 
     public void runCompaction(int levelNum) {
-        compactor.runCompaction(levelNum);
+        Compactor.runCompaction(levelNum);
     }
 }

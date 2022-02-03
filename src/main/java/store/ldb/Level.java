@@ -165,29 +165,31 @@ public class Level {
         return dirPathName();
     }
 
-    List<Segment> getSegmentsForCompaction() {
+    List<Segment> markSegmentsForCompaction(int limit) {
         lock.readLock().lock();
         try {
-            final List<Segment> list = new ArrayList<>(new ArrayList<>(segments));
+            List<Segment> list = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
             if (segmentComparator == SEGMENT_NUM_DESC_COMPARATOR) Collections.reverse(list);
+            list = list.subList(0, Math.min(list.size(), limit));
+            list.forEach(Segment::markForCompaction);
             return list;
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    public List<Segment> getOverlappingSegments(String minKey, String maxKey) {
+    public List<Segment> markOverlappingSegmentsForCompaction(String minKey, String maxKey) {
         assertLevelIsKeySorted();
-
         lock.readLock().lock();
         try {
-            if (this.segments.isEmpty()) return Collections.emptyList();
-
-            return new ArrayList<>(this.segments).stream()
+            final List<Segment> list = new ArrayList<>(this.segments).stream()
                     .filter(segment -> between(segment.getMinKey(), minKey, maxKey)
                             || between(segment.getMaxKey(), minKey, maxKey)
                             || (lessThanOrEqual(segment.getMinKey(), minKey) && greaterThanOrEqual(segment.getMaxKey(), maxKey)))
                     .collect(Collectors.toList());
+            if (list.stream().anyMatch(Segment::isMarkedForCompaction)) return List.of();
+            list.forEach(Segment::markForCompaction);
+            return list;
         } finally {
             lock.readLock().unlock();
         }
