@@ -76,6 +76,18 @@ public class LDBTest {
         assertFiles("wal3", "level1/seg1", "level1/seg2");
     }
 
+    @Test
+    public void testThreeLevelOverlappingCompactions() throws InterruptedException {
+        store = new LDB(basedir.getPath(), 1, 1, 3);
+        store.pauseCompactor();
+
+        store.set("1", "a");
+        store.runCompaction(0);
+        store.runCompaction(1);
+        assertEquals("a", store.get("1").orElseThrow());
+        assertFiles("wal1", "level2/seg0");
+    }
+
     private void assertFiles(String... filenames) {
         TreeSet<String> expected = new TreeSet<>(Arrays.asList(filenames));
         TreeSet<String> actual = FileUtils.listFiles(new File("tmp/ldb"), null, true).stream()

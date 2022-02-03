@@ -15,8 +15,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class LDB implements Store {
     public static final Logger LOG = LoggerFactory.getLogger(LDB.class);
     public static final int MB = 1024 * 1025;
-    public static final int DEFAULT_MAX_SEGMENT_SIZE = 5 * MB;
-    public static final int DEFAULT_MIN_COMPACTION_SEGMENT_COUNT = 1;
+    public static final int DEFAULT_MAX_SEGMENT_SIZE = 10 * MB;
+    public static final int DEFAULT_MIN_COMPACTION_SEGMENT_COUNT = 5;
     public static final int DEFAULT_NUM_LEVELS = 2;
 
     private final String dir;
