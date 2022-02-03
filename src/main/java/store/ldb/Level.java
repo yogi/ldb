@@ -15,12 +15,12 @@ import static java.lang.String.format;
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
     public static final Comparator<Segment> SEGMENT_NUM_DESC_COMPARATOR = (o1, o2) -> o2.num - o1.num;
-    public static final Comparator<Segment> SEGMENT_KEY_ASC_COMPARATOR = Comparator.comparing(Segment::getMinKey);
+    public static final Comparator<Segment> SEGMENT_KEY_ASC_COMPARATOR = Comparator.comparing(Segment::getMinKey).thenComparing(Segment::getNum);
 
     private final File dir;
     private final int num;
     private final int maxSegmentSize;
-    private final PriorityQueue<Segment> segments;
+    private final TreeSet<Segment> segments;
     private final AtomicInteger nextSegmentNumber;
     private final Comparator<Segment> segmentComparator;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -31,7 +31,7 @@ public class Level {
         this.dir = initDir(dirName, num);
         this.maxSegmentSize = maxSegmentSize;
         this.segmentComparator = segmentComparator;
-        this.segments = new PriorityQueue<>(segmentComparator);
+        this.segments = new TreeSet<>(segmentComparator);
         Segment.loadAll(dir).forEach(this::addSegment);
         nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
     }
@@ -64,6 +64,9 @@ public class Level {
                 throw new IllegalStateException("segment already ready: " + segment + " for level: " + this);
             }
             segment.markReady();
+            if (segments.contains(segment)) {
+                throw new IllegalStateException("segment already exists!: " + segment + " in " + segments);
+            }
             if (!segments.add(segment)) {
                 throw new IllegalStateException(format("segment %s was not added to level %s\n", segment.fileName, dirPathName()));
             }
@@ -158,10 +161,12 @@ public class Level {
         return dirPathName();
     }
 
-    List<Segment> getSegments() {
+    List<Segment> getSegmentsForCompaction() {
         lock.readLock().lock();
         try {
-            return new ArrayList<>(segments);
+            final List<Segment> list = new ArrayList<>(new ArrayList<>(segments));
+            if (segmentComparator == SEGMENT_NUM_DESC_COMPARATOR) Collections.reverse(list);
+            return list;
         } finally {
             lock.readLock().unlock();
         }

@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -15,14 +16,48 @@ public class Compactor {
     private final TreeMap<Integer, Level> levels;
     private final int minCompactionSegmentCount;
     private final Thread thread;
-    private final AtomicBoolean stop;
+    private final AtomicBoolean stop = new AtomicBoolean();
     private final AtomicBoolean compactionInProgress = new AtomicBoolean();
+    private final Semaphore pause = new Semaphore(1);
+
+    public static Compactor start(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
+        final Compactor compactor = new Compactor(levels, minCompactionSegmentCount);
+        compactor.start();
+        return compactor;
+    }
 
     public Compactor(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
         this.levels = levels;
         this.minCompactionSegmentCount = minCompactionSegmentCount;
-        this.stop = new AtomicBoolean(false);
         this.thread = new Thread(this::compact, "compactor");
+    }
+
+    private void start() {
+        thread.start();
+    }
+
+    public void pause() {
+        pause.drainPermits();
+    }
+
+    public void unpause() {
+        pause.release();
+    }
+
+    private void waitIfPaused() {
+        while(true) {
+            try {
+                pause.acquire();
+                pause.release();
+                return;
+            } catch (InterruptedException e) {
+                ; // retry acquire
+            }
+        }
+    }
+
+    public void stop() {
+        stop.set(true);
     }
 
     private void compact() {
@@ -30,9 +65,8 @@ public class Compactor {
         while (!stop.get()) {
             try {
                 for (int i = 0; i < levels.values().size() - 1; i++) {
-                    Level level = levels.get(i);
-                    final Level nextLevel = levels.get(i + 1);
-                    compactLevel(level, nextLevel);
+                    waitIfPaused();
+                    runCompaction(i);
                     sleepSilently(SLEEP_BETWEEN_COMPACTIONS_MS);
                 }
             } catch (Exception e) {
@@ -42,10 +76,16 @@ public class Compactor {
         LOG.info("compaction loop stopped");
     }
 
+    void runCompaction(int levelNum) {
+        Level level = levels.get(levelNum);
+        final Level nextLevel = levels.get(levelNum + 1);
+        compactLevel(level, nextLevel);
+    }
+
     private void compactLevel(Level fromLevel, Level toLevel) {
         if (compactionInProgress.get()) return;
 
-        final List<Segment> fromSegments = takeAtMost(fromLevel.getSegments(), minCompactionSegmentCount);
+        final List<Segment> fromSegments = takeAtMost(fromLevel.getSegmentsForCompaction(), minCompactionSegmentCount);
         if (fromSegments.isEmpty()) return;
 
         final String minKey = Collections.min(fromSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
@@ -193,17 +233,4 @@ public class Compactor {
         }
     }
 
-    public static Compactor start(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
-        final Compactor compactor = new Compactor(levels, minCompactionSegmentCount);
-        compactor.start();
-        return compactor;
-    }
-
-    private void start() {
-        thread.start();
-    }
-
-    public void stop() {
-        stop.set(true);
-    }
 }

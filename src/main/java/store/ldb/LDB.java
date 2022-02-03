@@ -104,4 +104,15 @@ public class LDB implements Store {
         return stats;
     }
 
+    public void pauseCompactor() {
+        compactor.pause();
+    }
+
+    public void unpauseCompactor() {
+        compactor.unpause();
+    }
+
+    public void runCompaction(int levelNum) {
+        compactor.runCompaction(levelNum);
+    }
 }
