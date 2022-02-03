@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class LDB implements Store {
     public static final Logger LOG = LoggerFactory.getLogger(LDB.class);
@@ -23,6 +25,7 @@ public class LDB implements Store {
     private final Compactor compactor;
     private volatile TreeMap<String, String> memtable;
     private volatile WriteAheadLog wal;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public LDB(String dir) {
         this(dir, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_MIN_COMPACTION_SEGMENT_COUNT, DEFAULT_NUM_LEVELS);
@@ -42,26 +45,36 @@ public class LDB implements Store {
         }));
     }
 
-    public synchronized void set(String key, String value) {
-        LOG.debug("set {}", key);
-        wal.append(new SetCmd(key, value));
-        memtable.put(key, value);
-        writeSegmentIfNeeded();
+    public void set(String key, String value) {
+        lock.writeLock().lock();
+        try {
+            LOG.debug("set {}", key);
+            wal.append(new SetCmd(key, value));
+            memtable.put(key, value);
+            writeSegmentIfNeeded();
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
-    public synchronized Optional<String> get(String key) {
-        if (memtable.containsKey(key)) {
-            LOG.debug("get found {} in memtable", key);
-            return Optional.of(memtable.get(key));
-        }
-        for (Level level : levels.values()) {
-            Optional<String> value = level.get(key);
-            if (value.isPresent()) {
-                return value;
+    public Optional<String> get(String key) {
+        lock.readLock().lock();
+        try {
+            if (memtable.containsKey(key)) {
+                LOG.debug("get found {} in memtable", key);
+                return Optional.of(memtable.get(key));
             }
+            for (Level level : levels.values()) {
+                Optional<String> value = level.get(key);
+                if (value.isPresent()) {
+                    return value;
+                }
+            }
+            LOG.debug("get did not find {}", key);
+            return Optional.empty();
+        } finally {
+            lock.readLock().unlock();
         }
-        LOG.debug("get did not find {}", key);
-        return Optional.empty();
     }
 
     private void writeSegmentIfNeeded() {
