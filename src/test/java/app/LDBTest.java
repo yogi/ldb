@@ -23,7 +23,27 @@ public class LDBTest {
     }
 
     @Test
-    public void testOverlappingCompactions() throws InterruptedException {
+    public void testLevelZeroCompactionsHappenFromOldestToNewest() throws InterruptedException {
+        store = new LDB(basedir.getPath(), 1, 1, 2);
+        store.pauseCompactor();
+
+        int value = 0;
+        store.set("1", "a");
+        store.set("1", "b");
+        assertEquals("b", store.get("1").orElseThrow());
+        assertFiles("wal2", "level0/seg0", "level0/seg1");
+
+        store.runCompaction(0);
+        assertEquals("b", store.get("1").orElseThrow());
+        assertFiles("wal2", "level0/seg1", "level1/seg0");
+
+        store.runCompaction(0);
+        assertEquals("b", store.get("1").orElseThrow());
+        assertFiles("wal2", "level1/seg1");
+    }
+
+    @Test
+    public void testTwoLevelOverlappingCompactions() throws InterruptedException {
         store = new LDB(basedir.getPath(), 1, 1, 2);
         store.pauseCompactor();
 
@@ -62,26 +82,6 @@ public class LDBTest {
                 .map(file -> file.getPath().replace("tmp/ldb/", ""))
                 .collect(Collectors.toCollection(TreeSet::new));
         assertEquals(expected, actual);
-    }
-
-    @Test
-    public void testLevelZeroCompactionsHappenFromOldestToNewest() throws InterruptedException {
-        store = new LDB(basedir.getPath(), 1, 1, 2);
-        store.pauseCompactor();
-
-        int value = 0;
-        store.set("1", "a");
-        store.set("1", "b");
-        assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal2", "level0/seg0", "level0/seg1");
-
-        store.runCompaction(0);
-        assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal2", "level0/seg1", "level1/seg0");
-
-        store.runCompaction(0);
-        assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal2", "level1/seg1");
     }
 
 }
