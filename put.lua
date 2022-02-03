@@ -3,8 +3,8 @@ counter = 0
 request = function()
     wrk.method = "PUT"
     wrk.headers["Content-Type"] = "application/json"
-    counter = (counter + 1) -- % 10000
-    pid = math.random(1000000)
+    counter = (counter + 1)
+    pid = math.random(10000000)
     probeId = "PRB" .. pid
     eventId = "7707d6a0-61b5-11ec-9f10-0800200c9a66" .. counter
     path = "/probe/" .. probeId .. "/event/" .. eventId
@@ -13,6 +13,6 @@ request = function()
     return wrk.format(nil, path, nil, body)
 end
 
- done = function(summary, latency, requests)
+done = function(summary, latency, requests)
     io.write(string.format("total requests: %d\n", summary.requests))
- end
+end
