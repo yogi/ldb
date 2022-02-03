@@ -8,6 +8,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import static java.lang.String.format;
+
 public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
 
@@ -24,7 +26,7 @@ public class Segment {
         this.num = num;
         this.fileName = dir.getPath() + File.separatorChar + "seg" + num;
         this.writer = new SegmentWriter();
-        LOG.info("new segment: {}", fileName);
+        LOG.debug("new segment: {}", fileName);
     }
 
     public static List<Segment> loadAll(File dir) {
@@ -45,7 +47,7 @@ public class Segment {
             writer.write(new KeyValueEntry((byte) 0, entry.getKey(), entry.getValue()));
         }
         writer.done();
-        LOG.info("done... write memtable to segment {}, {} keys in {} ms", fileName, index.size(), writer.timeTaken());
+        LOG.debug("done: write memtable to segment {}, {} keys in {} ms", fileName, index.size(), writer.timeTaken());
     }
 
     public SegmentWriter getWriter() {
@@ -192,13 +194,11 @@ public class Segment {
     public void delete() {
         assertReady();
         File file = new File(fileName);
-        LOG.info("delete segment file: " + file.getPath());
-        if (file.exists()) {
-            if (!file.delete()) {
-                final String msg = "could not delete segment file: " + file.getPath();
-                LOG.error(msg);
-                throw new IllegalStateException(msg);
-            }
+        LOG.debug("delete segment file: " + file.getPath());
+        if (file.exists() && !file.delete()) {
+            final String msg = "could not delete segment file: " + file.getPath();
+            LOG.error(msg);
+            throw new IllegalStateException(msg);
         }
     }
 
@@ -215,12 +215,11 @@ public class Segment {
             this.offset = offset;
             this.len = len;
         }
-
     }
 
     @Override
     public String toString() {
-        return fileName;
+        return format("[Segment %s min:%s max:%s]", fileName, getMinKey(), getMaxKey());
     }
 
 }

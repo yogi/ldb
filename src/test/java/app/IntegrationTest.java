@@ -18,7 +18,7 @@ public class IntegrationTest {
 
     @Test
     public void testGets() {
-        int expectedEntries = 100000;
+        int expectedEntries = 3000000;
 
         new IntRange(1, expectedEntries).forEach(n -> {
             try {
@@ -28,12 +28,8 @@ public class IntegrationTest {
                         .build();
                 try (Response rsp = client.newCall(req).execute()) {
                     String msg = "failed for probe: " + probeId;
-                    if (rsp.code() == 200) {
-                        assertEquals(StatusCode.OK.value(), rsp.code(), msg);
-                        assertTrue(rsp.body().string().contains("7707d6a0-61b5-11ec-9f10-0800200c9a66" + n), msg);
-                    } else {
-                        System.out.println(msg);
-                    }
+                    assertEquals(StatusCode.OK.value(), rsp.code(), msg);
+                    assertTrue(rsp.body().string().contains("7707d6a0-61b5-11ec-9f10-0800200c9a66" + n), msg);
                 }
                 if (n % 10000 == 0) {
                     System.out.println(n);

@@ -61,8 +61,8 @@ public class LDBTest {
         assertFileDoesNotExist("tmp/ldb/wal2");
         assertFileExists("tmp/ldb/wal3");
         assertDirEmpty("tmp/ldb/level0/");
-        assertFileExists("tmp/ldb/level1/seg0");
         assertFileExists("tmp/ldb/level1/seg1");
+        assertFileExists("tmp/ldb/level1/seg2");
     }
 
     private void assertDirEmpty(String pathname) {

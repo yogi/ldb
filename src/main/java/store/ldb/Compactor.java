@@ -45,25 +45,26 @@ public class Compactor {
     private void compactLevel(Level fromLevel, Level toLevel) {
         if (compactionInProgress.get()) return;
 
-        final List<Segment> fromSegments = takeAtMost(fromLevel.getSegmentsToCompact(), 10);
-        final List<Segment> toSegments = toLevel.getOverlappingSegments(fromSegments);
+        final List<Segment> fromSegments = takeAtMost(fromLevel.getSegments(), minCompactionSegmentCount);
+        if (fromSegments.isEmpty()) return;
 
-        if (toSegments.size() > 0) {
-            LOG.debug("found overlapping segments: {}", toSegments);
-        }
+        final String minKey = Collections.min(fromSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
+        final String maxKey = Collections.max(fromSegments.stream().map(Segment::getMaxKey).collect(Collectors.toList()));
+        final List<Segment> overlappingSegments = toLevel.getOverlappingSegments(minKey, maxKey);
 
-        List<Segment> toBeCompacted = addLists(fromSegments, toSegments);
-        if (toBeCompacted.size() < minCompactionSegmentCount || toBeCompacted.stream().anyMatch(s -> !s.isReady())) {
-            return;
-        }
+        List<Segment> toBeCompacted = addLists(fromSegments, overlappingSegments);
+        if (toBeCompacted.size() < minCompactionSegmentCount) return;
 
-        LOG.debug("compact level {} to {}", fromLevel, toLevel);
+        LOG.debug("compact {} segments from {} to {} with {} overlapping-segments - minKey {}, maxKey {}",
+                fromSegments.size(), fromLevel, toLevel, overlappingSegments.size(), minKey, maxKey);
         try {
+            long start = System.currentTimeMillis();
             compactionInProgress.set(true);
             compactAll(toBeCompacted, toLevel);
             fromSegments.forEach(fromLevel::removeSegment);
-            toSegments.forEach(toLevel::removeSegment);
-            LOG.debug("done... compact level {} to {}, toBeCompacted {}", fromLevel, toLevel, toBeCompacted.size());
+            overlappingSegments.forEach(toLevel::removeSegment);
+            final long timeTaken = System.currentTimeMillis() - start;
+            LOG.debug("compaction done #total-segments {} in {} ms", toBeCompacted.size(), timeTaken);
         } finally {
             compactionInProgress.set(false);
         }
@@ -83,10 +84,6 @@ public class Compactor {
     }
 
     public void compactAll(List<Segment> segments, Level toLevel) {
-        LOG.info("compacting segments {} to level {}", segments, toLevel);
-
-        long start = System.currentTimeMillis();
-
         PriorityQueue<SegmentScanner> scanners = segments.stream()
                 .map(SegmentScanner::new)
                 .filter(SegmentScanner::hasNext)
@@ -124,12 +121,10 @@ public class Compactor {
             }
         } while (true);
 
-        if (segment !=  null) {
+        if (segment != null) {
             writer.done();
             toLevel.addSegment(segment);
         }
-
-        LOG.info("compacted {} segments to level {} in {} ms", segments.size(), toLevel, System.currentTimeMillis() - start);
     }
 
     private static class SegmentScanner implements Comparable<SegmentScanner> {

@@ -56,7 +56,7 @@ public class WriteAheadLog {
 
     private WriteAheadLog(int gen) {
         this.gen = gen;
-        LOG.info("create {}", walFileName());
+        LOG.debug("create {}", walFileName());
     }
 
     private void start() {
@@ -78,7 +78,7 @@ public class WriteAheadLog {
     }
 
     public void delete() {
-        LOG.info("delete {}", walFileName());
+        LOG.debug("delete {}", walFileName());
         File file = new File(walFileName());
         if (file.exists()) {
             if (!file.delete()) {

@@ -5,8 +5,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
@@ -19,9 +20,10 @@ public class Level {
     private final File dir;
     private final int num;
     private final int maxSegmentSize;
-    private final ConcurrentSkipListSet<Segment> segments;
+    private final PriorityQueue<Segment> segments;
     private final AtomicInteger nextSegmentNumber;
     private final Comparator<Segment> segmentComparator;
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public Level(String dirName, int num, int maxSegmentSize, Comparator<Segment> segmentComparator) {
         LOG.info("create level: {}", num);
@@ -29,7 +31,7 @@ public class Level {
         this.dir = initDir(dirName, num);
         this.maxSegmentSize = maxSegmentSize;
         this.segmentComparator = segmentComparator;
-        this.segments = new ConcurrentSkipListSet<>(segmentComparator);
+        this.segments = new PriorityQueue<>(segmentComparator);
         Segment.loadAll(dir).forEach(this::addSegment);
         nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
     }
@@ -37,7 +39,7 @@ public class Level {
     private static int initNextSegmentNumber(Collection<Segment> segments) {
         return segments.isEmpty() ?
                 0 :
-                Collections.max(segments.stream().map(s -> s.num).collect(Collectors.toList()));
+                Collections.max(segments.stream().map(s -> s.num).collect(Collectors.toList())) + 1;
     }
 
     private static File initDir(String dirName, int num) {
@@ -55,15 +57,19 @@ public class Level {
     }
 
     public void addSegment(Segment segment) {
-        LOG.debug("addSegment {} to level {}, segments {}", segment.fileName, dirPathName(), segments);
-        if (segment.isReady()) {
-            throw new IllegalStateException("segment already ready: " + segment + " for level: " + this);
+        lock.writeLock().lock();
+        try {
+            LOG.debug("addSegment {} to level {}, segments {}", segment, dirPathName(), segments);
+            if (segment.isReady()) {
+                throw new IllegalStateException("segment already ready: " + segment + " for level: " + this);
+            }
+            segment.markReady();
+            if (!segments.add(segment)) {
+                throw new IllegalStateException(format("segment %s was not added to level %s\n", segment.fileName, dirPathName()));
+            }
+        } finally {
+            lock.writeLock().unlock();
         }
-        segment.markReady();
-        if (!segments.add(segment)) {
-            throw new IllegalStateException(format("segment %s was not added to level %s\n", segment.fileName, dirPathName()));
-        }
-        LOG.debug("addSegment {} done to level {}, segments {}", segment.fileName, dirPathName(), segments);
     }
 
     private static String levelDirName(String dir, int num) {
@@ -81,13 +87,18 @@ public class Level {
     }
 
     public Optional<String> get(String key) {
-        for (Segment segment : segments) {
-            Optional<String> value = segment.get(key);
-            if (value.isPresent()) {
-                return value;
+        lock.readLock().lock();
+        try {
+            for (Segment segment : segments) {
+                Optional<String> value = segment.get(key);
+                if (value.isPresent()) {
+                    return value;
+                }
             }
+            return Optional.empty();
+        } finally {
+            lock.readLock().unlock();
         }
-        return Optional.empty();
     }
 
     public void flushMemtable(TreeMap<String, String> memtable) {
@@ -105,11 +116,21 @@ public class Level {
     }
 
     public long keyCount() {
-        return segments.stream().mapToLong(Segment::keyCount).sum();
+        lock.readLock().lock();
+        try {
+            return segments.stream().mapToLong(Segment::keyCount).sum();
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public long totalBytes() {
-        return segments.stream().mapToLong(Segment::totalBytes).sum();
+        lock.readLock().lock();
+        try {
+            return segments.stream().mapToLong(Segment::totalBytes).sum();
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public int getNum() {
@@ -117,10 +138,15 @@ public class Level {
     }
 
     public void removeSegment(Segment segment) {
-        if (!segments.remove(segment)) {
-            throw new IllegalStateException("could not remove segment: " + segment);
+        lock.writeLock().lock();
+        try {
+            if (!segments.remove(segment)) {
+                throw new IllegalStateException("could not remove segment: " + segment);
+            }
+            segment.delete();
+        } finally {
+            lock.writeLock().unlock();
         }
-        segment.delete();
     }
 
     public long maxSegmentSize() {
@@ -132,28 +158,30 @@ public class Level {
         return dirPathName();
     }
 
-    public List<Segment> getSegmentsToCompact() {
-        return segments.stream().filter(Segment::isReady).collect(Collectors.toList());
+    List<Segment> getSegments() {
+        lock.readLock().lock();
+        try {
+            return new ArrayList<>(segments);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
-    public List<Segment> getOverlappingSegments(List<Segment> otherSegments) {
+    public List<Segment> getOverlappingSegments(String minKey, String maxKey) {
         assertLevelIsKeySorted();
 
-        if (this.segments.isEmpty() || otherSegments.isEmpty()) {
-            return Collections.emptyList();
+        lock.readLock().lock();
+        try {
+            if (this.segments.isEmpty()) return Collections.emptyList();
+
+            return new ArrayList<>(this.segments).stream()
+                    .filter(segment -> between(segment.getMinKey(), minKey, maxKey)
+                            || between(segment.getMaxKey(), minKey, maxKey)
+                            || (lessThanOrEqual(segment.getMinKey(), minKey) && greaterThanOrEqual(segment.getMaxKey(), maxKey)))
+                    .collect(Collectors.toList());
+        } finally {
+            lock.readLock().unlock();
         }
-
-        String minKey = Collections.min(otherSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
-        String maxKey = Collections.max(otherSegments.stream().map(Segment::getMaxKey).collect(Collectors.toList()));
-
-        final List<Segment> list = new ArrayList<>(this.segments).stream()
-                .filter(segment -> between(segment.getMinKey(), minKey, maxKey)
-                        || between(segment.getMaxKey(), minKey, maxKey)
-                        || (lessThanOrEqual(segment.getMinKey(), minKey) && greaterThanOrEqual(segment.getMaxKey(), maxKey)))
-                .collect(Collectors.toList());
-
-        LOG.debug("for compaction found overlapping segments for minKey: {}, maxKey: {}, {} ", minKey, maxKey, list);
-        return list;
     }
 
     private boolean between(String s, String from, String to) {
@@ -175,7 +203,12 @@ public class Level {
     }
 
     public int segmentCount() {
-        return segments.size();
+        lock.readLock().lock();
+        try {
+            return segments.size();
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 }
 
