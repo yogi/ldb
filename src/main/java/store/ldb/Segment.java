@@ -18,7 +18,7 @@ public class Segment {
     final String fileName;
     private final TreeMap<String, ValuePosition> index = new TreeMap<>();
     private final AtomicBoolean ready = new AtomicBoolean(false);
-    private AtomicBoolean markedForCompaction = new AtomicBoolean();
+    private final AtomicBoolean markedForCompaction = new AtomicBoolean();
     private final SegmentWriter writer;
     private int totalBytes;
 
