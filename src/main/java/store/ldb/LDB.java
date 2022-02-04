@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import static java.lang.String.format;
+
 public class LDB implements Store {
     public static final Logger LOG = LoggerFactory.getLogger(LDB.class);
     public static final int MB = 1024 * 1025;
@@ -45,6 +47,8 @@ public class LDB implements Store {
     }
 
     public void set(String key, String value) {
+        assertKeySize(key);
+        assertValueSize(value);
         lock.writeLock().lock();
         try {
             LOG.debug("set {}", key);
@@ -57,6 +61,7 @@ public class LDB implements Store {
     }
 
     public Optional<String> get(String key) {
+        assertKeySize(key);
         lock.readLock().lock();
         try {
             if (memtable.containsKey(key)) {
@@ -126,5 +131,20 @@ public class LDB implements Store {
 
     public void runCompaction(int levelNum) {
         Compactor.runCompaction(levelNum);
+    }
+
+    private void assertValueSize(String value) {
+        assertSize(value, KeyValueEntry.MAX_KEY_SIZE, "key");
+    }
+
+    private void assertKeySize(String key) {
+        assertSize(key, KeyValueEntry.MAX_VALUE_SIZE, "value");
+    }
+
+    private void assertSize(String s, int maxSize, String key_or_value) {
+        if (s.getBytes().length > maxSize) {
+            throw new IllegalArgumentException(format("max %s size supported %d bytes, got %d bytes: %s",
+                    key_or_value, maxSize, s.getBytes().length, s));
+        }
     }
 }

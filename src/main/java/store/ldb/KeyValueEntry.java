@@ -9,9 +9,12 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class KeyValueEntry {
+    public static final int MAX_KEY_SIZE = Short.MAX_VALUE;
+    public static final int MAX_VALUE_SIZE = Short.MAX_VALUE;
     public static final int FLUSH_INTERVAL = 0;
     public static final CompressionType KEY_COMPRESSION = CompressionType.NONE;
     public static final CompressionType VALUE_COMPRESSION = CompressionType.NONE;
+
     final byte metadata;
     final String key;
     final String value;
