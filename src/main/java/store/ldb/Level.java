@@ -134,7 +134,7 @@ public class Level {
     public long totalBytes() {
         lock.readLock().lock();
         try {
-            return segments.stream().mapToLong(Segment::totalBytes).sum();
+            return segments.stream().mapToLong(Segment::dataSize).sum();
         } finally {
             lock.readLock().unlock();
         }
@@ -183,9 +183,9 @@ public class Level {
         lock.readLock().lock();
         try {
             final List<Segment> list = new ArrayList<>(this.segments).stream()
-                    .filter(segment -> between(segment.getMinKey(), minKey, maxKey)
-                            || between(segment.getMaxKey(), minKey, maxKey)
-                            || (lessThanOrEqual(segment.getMinKey(), minKey) && greaterThanOrEqual(segment.getMaxKey(), maxKey)))
+                    .filter(segment -> StringUtils.isWithinRange(segment.getMinKey(), minKey, maxKey)
+                            || StringUtils.isWithinRange(segment.getMaxKey(), minKey, maxKey)
+                            || (StringUtils.isLessThanOrEqual(segment.getMinKey(), minKey) && StringUtils.isGreaterThanOrEqual(segment.getMaxKey(), maxKey)))
                     .collect(Collectors.toList());
             if (list.stream().anyMatch(Segment::isMarkedForCompaction)) return List.of();
             list.forEach(Segment::markForCompaction);
@@ -193,18 +193,6 @@ public class Level {
         } finally {
             lock.readLock().unlock();
         }
-    }
-
-    private boolean between(String s, String from, String to) {
-        return greaterThanOrEqual(s, from) && lessThanOrEqual(s, to);
-    }
-
-    private boolean greaterThanOrEqual(String s, String other) {
-        return s.compareTo(other) >= 0;
-    }
-
-    private boolean lessThanOrEqual(String s, String other) {
-        return s.compareTo(other) <= 0;
     }
 
     private void assertLevelIsKeySorted() {
