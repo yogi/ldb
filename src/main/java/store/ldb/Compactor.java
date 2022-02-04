@@ -161,7 +161,7 @@ public class Compactor {
 
                 KeyValueEntry entry = scanner.peek();
                 writer.write(entry);
-                if (writer.writtenBytes() > toLevel.maxSegmentSize()) {
+                if (writer.isFull(toLevel.maxSegmentSize())) {
                     writer.done();
                     toLevel.addSegment(segment);
                     segment = null;
@@ -193,6 +193,7 @@ public class Compactor {
         public SegmentScanner(Segment segment) {
             try {
                 this.segment = segment;
+                replace with KeyValueEntryIterator //TODO
                 is = new DataInputStream(new BufferedInputStream(new FileInputStream(segment.fileName)));
                 if (is.available() > 0) {
                     next = KeyValueEntry.readFrom(is);

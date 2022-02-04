@@ -22,53 +22,6 @@ public class KeyValueEntry {
     private static final AtomicLong recordsWritten = new AtomicLong();
     private static final AtomicLong flushCount = new AtomicLong();
 
-    private enum CompressionType {
-        NONE((byte) 1) {
-            @Override
-            public byte[] uncompress(byte[] bytes) {
-                return bytes;
-            }
-
-            @Override
-            public byte[] compress(byte[] bytes) {
-                return bytes;
-            }
-        },
-        SNAPPY((byte) 2) {
-            @Override
-            public byte[] uncompress(byte[] bytes) {
-                try {
-                    return Snappy.uncompress(bytes);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-
-            @Override
-            public byte[] compress(byte[] bytes) {
-                try {
-                    return Snappy.compress(bytes);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        },
-        ;
-        final byte code;
-
-        CompressionType(byte code) {
-            this.code = code;
-        }
-
-        public static CompressionType fromCode(byte b) {
-            return Arrays.stream(values()).filter(compressionType -> compressionType.code == b).findFirst().orElseThrow();
-        }
-
-        public abstract byte[] uncompress(byte[] bytes);
-
-        public abstract byte[] compress(byte[] bytes);
-    }
-
     public int valueOffset() {
         final int metadataLen = 1;
         final int keyComprLen = 1;
@@ -78,7 +31,7 @@ public class KeyValueEntry {
         return metadataLen + keyComprLen + keyLen + key.length() + valueComprLen + valueLen;
     }
 
-    public int totalLength() {
+    public int totalBytes() {
         return valueOffset() + value.length();
     }
 

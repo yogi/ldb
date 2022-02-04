@@ -134,7 +134,7 @@ public class Level {
     public long totalBytes() {
         lock.readLock().lock();
         try {
-            return segments.stream().mapToLong(Segment::dataSize).sum();
+            return segments.stream().mapToLong(Segment::totalBytes).sum();
         } finally {
             lock.readLock().unlock();
         }
