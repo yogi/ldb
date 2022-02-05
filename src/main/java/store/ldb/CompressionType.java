@@ -45,9 +45,9 @@ enum CompressionType {
     }
 
     public static CompressionType fromCode(byte b) {
-        final Optional<CompressionType> ct = Arrays.stream(CompressionType.values())
-                .filter(compressionType -> compressionType.code == b).findFirst();
-        return ct.orElseThrow(() -> new IllegalArgumentException("invalid CompressionType: " + b));
+        return Arrays.stream(CompressionType.values())
+                .filter(compressionType -> compressionType.code == b).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("invalid CompressionType: " + b));
     }
 
     public abstract byte[] uncompress(byte[] bytes);

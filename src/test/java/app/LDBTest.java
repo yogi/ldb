@@ -20,7 +20,7 @@ public class LDBTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        if (basedir.exists()) FileUtils.deleteDirectory(basedir);
+        deleteDataDir();
     }
 
     @Test
@@ -29,25 +29,18 @@ public class LDBTest {
         store.pauseCompactor();
 
         store.set("1", "a");
-        store.set("1", "b");
-        assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal2", "level0/seg0", "level0/seg1");
+        assertEquals("a", store.get("1").orElseThrow());
+        assertFiles("wal1", "level0/seg0");
 
         store = new LDB(basedir.getPath(), 1, 1, 1);
         store.pauseCompactor();
 
-        store.set("1", "a");
+        assertEquals("a", store.get("1").orElseThrow());
+        assertFiles("wal2", "level0/seg0");
+
         store.set("1", "b");
         assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal2", "level0/seg0", "level0/seg1");
-
-//        store.runCompaction(0);
-//        assertEquals("b", store.get("1").orElseThrow());
-//        assertFiles("wal2", "level0/seg1", "level1/seg0");
-//
-//        store.runCompaction(0);
-//        assertEquals("b", store.get("1").orElseThrow());
-//        assertFiles("wal2", "level1/seg1");
+        assertFiles("wal3", "level0/seg0", "level0/seg1");
     }
 
     @Test
@@ -121,6 +114,10 @@ public class LDBTest {
                 .map(file -> file.getPath().replace("tmp/ldb/", ""))
                 .collect(Collectors.toCollection(TreeSet::new));
         assertEquals(expected, actual);
+    }
+
+    private void deleteDataDir() throws IOException {
+        if (basedir.exists()) FileUtils.deleteDirectory(basedir);
     }
 
 }

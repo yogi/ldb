@@ -1,5 +1,6 @@
 package store.ldb;
 
+import org.apache.commons.io.input.CountingInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -158,7 +159,7 @@ public class Segment {
     public void load() {
         assertNotReady();
         metadata = SegmentMetadata.load(fileName);
-        blocks = Block.loadBlocks(metadata.blockIndexOffset, fileName);
+        blocks = Block.loadBlocks(metadata.blockIndexOffset, metadata.offset, fileName);
     }
 
     private void assertReady() {
@@ -218,7 +219,7 @@ public class Segment {
     public String toString() {
         return metadata == null ?
                 format("[Segment %s]", fileName) :
-                format("[Segment %s min:%s max:%s]", fileName, getMinKey(), getMaxKey());
+                format("[Segment %s min:%s max:%s, blocks: %s]", fileName, getMinKey(), getMaxKey(), blocks);
     }
 
     private static class Block {
@@ -270,23 +271,27 @@ public class Segment {
         }
 
         private static Block readIndexEntry(String fileName, DataInputStream is) throws IOException {
-            short keyLen = is.readShort();
-            String key = new String(is.readNBytes(keyLen));
+            short startKeyLen = is.readShort();
+            String startKey = new String(is.readNBytes(startKeyLen));
             int blockOffset = is.readInt();
             int blockLength = is.readInt();
             CompressionType compression = CompressionType.fromCode(is.readByte());
-            return new Block(key, blockOffset, blockLength, compression, fileName);
+            return new Block(startKey, blockOffset, blockLength, compression, fileName);
         }
 
-        public static List<Block> loadBlocks(long offset, String fileName) {
-            try (DataInputStream is = new DataInputStream(new BufferedInputStream(new FileInputStream(fileName)))) {
+        public static List<Block> loadBlocks(long offset, long uptoOffset, String fileName) {
+            try (CountingInputStream countingStream = new CountingInputStream(new BufferedInputStream(new FileInputStream(fileName)));
+                 DataInputStream is = new DataInputStream(countingStream)) {
                 final long skippedTo = is.skip(offset);
                 if (skippedTo != offset) {
                     throw new IllegalStateException(format("skipped to %d instead of offset %d when loading blocks for segment %s", skippedTo, offset, fileName));
                 }
                 List<Block> blocks = new ArrayList<>();
-                while (is.available() > 0) {
+                while (countingStream.getCount() < uptoOffset) {
                     blocks.add(readIndexEntry(fileName, is));
+                }
+                if (countingStream.getCount() != uptoOffset) {
+                    throw new IllegalStateException(format("unexpected block bytes read: %d != %s", countingStream.getCount(), uptoOffset));
                 }
                 return blocks;
             } catch (IOException e) {
@@ -335,12 +340,13 @@ public class Segment {
         }
 
         private byte[] compress(List<KeyValueEntry> entries) throws IOException {
-            final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            DataOutputStream os = new DataOutputStream(new BufferedOutputStream(bytes));
-            for (KeyValueEntry keyValueEntry : entries) {
-                keyValueEntry.writeTo(os);
+            try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                 DataOutputStream os = new DataOutputStream(bytes)) {
+                for (KeyValueEntry keyValueEntry : entries) {
+                    keyValueEntry.writeTo(os);
+                }
+                return BLOCK_COMPRESSION_TYPE.compress(bytes.toByteArray());
             }
-            return BLOCK_COMPRESSION_TYPE.compress(bytes.toByteArray());
         }
 
         public boolean isFull() {
@@ -354,13 +360,15 @@ public class Segment {
     }
 
     private static class SegmentMetadata {
+        final int offset;
         final int blockIndexOffset;
         final String minKey;
         final String maxKey;
         final int keyCount;
         final int totalBytes;
 
-        public SegmentMetadata(int blockIndexOffset, String minKey, String maxKey, int keyCount, int totalBytes) {
+        public SegmentMetadata(int offset, int blockIndexOffset, String minKey, String maxKey, int keyCount, int totalBytes) {
+            this.offset = offset;
             this.blockIndexOffset = blockIndexOffset;
             this.minKey = minKey;
             this.maxKey = maxKey;
@@ -372,8 +380,8 @@ public class Segment {
             try (RandomAccessFile f = new RandomAccessFile(fileName, "r")) {
                 // seek to the start of fixed length fields
                 f.seek(f.length() - (4 * Integer.BYTES));
-                int blockIndexOffset = f.readInt();
                 int minKeyOffset = f.readInt();
+                int blockIndexOffset = f.readInt();
                 int keyCount = f.readInt();
                 int totalBytes = f.readInt();
 
@@ -383,7 +391,7 @@ public class Segment {
                 String minKey = readString(f, minKeyLen);
                 short maxKeyLen = f.readShort();
                 String maxKey = readString(f, maxKeyLen);
-                return new SegmentMetadata(blockIndexOffset, minKey, maxKey, keyCount, totalBytes);
+                return new SegmentMetadata(minKeyOffset, blockIndexOffset, minKey, maxKey, keyCount, totalBytes);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -398,14 +406,14 @@ public class Segment {
                 os.write(maxKey.getBytes());
 
                 // now write the fixed length fields
-                os.writeInt(blockIndexOffset);
                 os.writeInt(offset); // offset is the minKeyOffset where we started writing from
+                os.writeInt(blockIndexOffset);
                 os.writeInt(keyCount);
                 int totalBytes = offset + Short.BYTES + minKey.length() + Short.BYTES + maxKey.length() + (4 * Integer.BYTES);
                 os.writeInt(totalBytes);
 
                 os.flush();
-                return new SegmentMetadata(blockIndexOffset, minKey, maxKey, keyCount, totalBytes);
+                return new SegmentMetadata(offset, blockIndexOffset, minKey, maxKey, keyCount, totalBytes);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
