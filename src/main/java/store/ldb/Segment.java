@@ -79,6 +79,10 @@ public class Segment {
         return markedForCompaction.get();
     }
 
+    public Iterator<KeyValueEntry> keyValueEntryIterator() {
+        return new KeyValueEntryIterator();
+    }
+
     class SegmentWriter {
         private final DataOutputStream os;
         private int offset = 0;
@@ -313,6 +317,18 @@ public class Segment {
             }
         }
 
+        public List<KeyValueEntry> loadAllEntries() {
+            try (DataInputStream is = new DataInputStream(new ByteArrayInputStream(uncompress()))) {
+                List<KeyValueEntry> entries = new ArrayList<>();
+                while (is.available() > 0) {
+                    entries.add(KeyValueEntry.readFrom(is));
+                }
+                return entries;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         private byte[] uncompress() throws IOException {
             FileInputStream f = new FileInputStream(filename);
             long skippedTo = f.skip(offset);
@@ -433,4 +449,26 @@ public class Segment {
         }
     }
 
+    private class KeyValueEntryIterator implements Iterator<KeyValueEntry> {
+        private final Queue<KeyValueEntry> entries;
+        private final Iterator<Block> blockIterator;
+
+        public KeyValueEntryIterator() {
+            entries = new LinkedList<>();
+            blockIterator = blocks.iterator();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return !entries.isEmpty() || blockIterator.hasNext();
+        }
+
+        @Override
+        public KeyValueEntry next() {
+            if(entries.isEmpty()) {
+                entries.addAll(blockIterator.next().loadAllEntries());
+            }
+            return entries.poll();
+        }
+    }
 }

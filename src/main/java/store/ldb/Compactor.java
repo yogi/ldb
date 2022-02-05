@@ -187,19 +187,14 @@ public class Compactor {
 
     private static class SegmentScanner implements Comparable<SegmentScanner> {
         private final Segment segment;
-        private final DataInputStream is;
+        private final Iterator<KeyValueEntry> iterator;
         private KeyValueEntry next;
 
         public SegmentScanner(Segment segment) {
-            try {
-                this.segment = segment;
-                
-                is = new DataInputStream(new BufferedInputStream(new FileInputStream(segment.fileName)));
-                if (is.available() > 0) {
-                    next = KeyValueEntry.readFrom(is);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            this.segment = segment;
+            this.iterator = segment.keyValueEntryIterator();
+            if (iterator.hasNext()) {
+                next = iterator.next();
             }
         }
 
@@ -221,17 +216,10 @@ public class Compactor {
         }
 
         public void moveToNextIfEquals(String key) {
-            try {
-                if (key.equals(next.key)) {
-                    if (is.available() > 0) {
-                        next = KeyValueEntry.readFrom(is);
-                    } else {
-                        is.close();
-                        next = null;
-                    }
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            if (key.equals(next.key)) {
+                next = iterator.hasNext() ?
+                        iterator.next() :
+                        null;
             }
         }
 
