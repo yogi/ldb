@@ -24,6 +24,36 @@ public class LDBTest {
     }
 
     @Test
+    public void testMultipleSetsAndGets() {
+        store = new LDB(basedir.getPath(), 1, 1, 3);
+        store.pauseCompactor();
+
+        final int max = 10;
+        for (int i = 0; i < max; i++) {
+            store.set(String.valueOf(i), String.valueOf(i));
+        }
+        for (int i = 0; i < max; i++) {
+            assertEquals(String.valueOf(i), store.get(String.valueOf(i)).orElseThrow());
+        }
+
+        for (int i = 0; i < max; i++) {
+            store.runCompaction(0);
+            for (int j = 0; j < max; j++) {
+                assertEquals(String.valueOf(j), store.get(String.valueOf(j)).orElseThrow());
+            }
+        }
+
+        for (int i = 0; i < max; i++) {
+            store.runCompaction(1);
+            for (int j = 0; j < max; j++) {
+                assertEquals(String.valueOf(j), store.get(String.valueOf(j)).orElseThrow());
+            }
+        }
+//        assertFiles("wal2", "level0/seg1", "level1/seg0");
+
+    }
+
+    @Test
     public void testBlockStorage() {
         store = new LDB(basedir.getPath(), 1, 1, 1);
         store.pauseCompactor();

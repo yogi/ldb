@@ -330,12 +330,13 @@ public class Segment {
         }
 
         private byte[] uncompress() throws IOException {
-            FileInputStream f = new FileInputStream(filename);
-            long skippedTo = f.skip(offset);
-            if (skippedTo != offset) {
-                throw new IllegalStateException(format("skipped to %d instead of offset %d when trying to read block for segment %s", skippedTo, offset, filename));
+            try (FileInputStream f = new FileInputStream(filename)) {
+                long skippedTo = f.skip(offset);
+                if (skippedTo != offset) {
+                    throw new IllegalStateException(format("skipped to %d instead of offset %d when trying to read block for segment %s", skippedTo, offset, filename));
+                }
+                return compressionType.uncompress(f.readNBytes(length));
             }
-            return compressionType.uncompress(f.readNBytes(length));
         }
     }
 
