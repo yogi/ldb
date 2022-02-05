@@ -24,11 +24,37 @@ public class LDBTest {
     }
 
     @Test
+    public void testBlockStorage() {
+        store = new LDB(basedir.getPath(), 1, 1, 1);
+        store.pauseCompactor();
+
+        store.set("1", "a");
+        store.set("1", "b");
+        assertEquals("b", store.get("1").orElseThrow());
+        assertFiles("wal2", "level0/seg0", "level0/seg1");
+
+        store = new LDB(basedir.getPath(), 1, 1, 1);
+        store.pauseCompactor();
+
+        store.set("1", "a");
+        store.set("1", "b");
+        assertEquals("b", store.get("1").orElseThrow());
+        assertFiles("wal2", "level0/seg0", "level0/seg1");
+
+//        store.runCompaction(0);
+//        assertEquals("b", store.get("1").orElseThrow());
+//        assertFiles("wal2", "level0/seg1", "level1/seg0");
+//
+//        store.runCompaction(0);
+//        assertEquals("b", store.get("1").orElseThrow());
+//        assertFiles("wal2", "level1/seg1");
+    }
+
+    @Test
     public void testLevelZeroCompactionsHappenFromOldestToNewest() {
         store = new LDB(basedir.getPath(), 1, 1, 2);
         store.pauseCompactor();
 
-        int value = 0;
         store.set("1", "a");
         store.set("1", "b");
         assertEquals("b", store.get("1").orElseThrow());

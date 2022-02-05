@@ -4,6 +4,7 @@ import org.xerial.snappy.Snappy;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Optional;
 
 enum CompressionType {
     NONE((byte) 1) {
@@ -44,7 +45,9 @@ enum CompressionType {
     }
 
     public static CompressionType fromCode(byte b) {
-        return Arrays.stream(CompressionType.values()).filter(compressionType -> compressionType.code == b).findFirst().orElseThrow();
+        final Optional<CompressionType> ct = Arrays.stream(CompressionType.values())
+                .filter(compressionType -> compressionType.code == b).findFirst();
+        return ct.orElseThrow(() -> new IllegalArgumentException("invalid CompressionType: " + b));
     }
 
     public abstract byte[] uncompress(byte[] bytes);

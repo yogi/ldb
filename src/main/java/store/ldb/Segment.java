@@ -51,7 +51,7 @@ public class Segment {
             writer.write(new KeyValueEntry((byte) 0, entry.getKey(), entry.getValue()));
         }
         writer.done();
-        LOG.debug("done: write memtable to segment {}, {} keys in {} ms", fileName, metadata.keyCount(), writer.timeTaken());
+        LOG.debug("done: write memtable to segment {}, {} keys, {} bytes in {} ms", fileName, metadata.keyCount(), metadata.totalBytes, writer.timeTaken());
     }
 
     public SegmentWriter getWriter() {
@@ -138,9 +138,7 @@ public class Segment {
                 offset += Block.writeIndex(os, blocks);
 
                 metadata = SegmentMetadata.writeTo(offset, blockIndexOffset, minKey, maxKey, keyCount, os);
-
                 os.close();
-
                 endTime = System.currentTimeMillis();
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -180,11 +178,10 @@ public class Segment {
         if (!StringUtils.isWithinRange(key, getMinKey(), getMaxKey())) return Optional.empty();
         for (Block block : blocks) {
             if (isGreaterThanOrEqual(key, block.startKey)) {
-
-            }
-            final Optional<String> value = block.get(key);
-            if (value.isPresent()) {
-                return value;
+                Optional<String> value = block.get(key);
+                if (value.isPresent()) {
+                    return value;
+                }
             }
         }
         throw new IllegalStateException(format("should not reach here - key %s not found in blocks for segment %s", key, this));
@@ -219,12 +216,25 @@ public class Segment {
 
     @Override
     public String toString() {
-        return format("[Segment %s min:%s max:%s]", fileName, getMinKey(), getMaxKey());
+        return metadata == null ?
+                format("[Segment %s]", fileName) :
+                format("[Segment %s min:%s max:%s]", fileName, getMinKey(), getMaxKey());
     }
 
     private static class Block {
         final int offset;
         final int length;
+
+        @Override
+        public String toString() {
+            return "Block{" +
+                    "offset=" + offset +
+                    ", length=" + length +
+                    ", startKey='" + startKey + '\'' +
+                    ", compressionType=" + compressionType +
+                    '}';
+        }
+
         final String startKey;
         private final CompressionType compressionType;
         private final String filename;
@@ -239,11 +249,11 @@ public class Segment {
 
         public static int writeIndex(DataOutputStream os, List<Block> blocks) {
             try {
-                int count = 0;
+                int bytesWritten = 0;
                 for (Block block : blocks) {
-                    count += writeIndexEntry(block, os);
+                    bytesWritten += writeIndexEntry(block, os);
                 }
-                return count;
+                return bytesWritten;
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -255,6 +265,7 @@ public class Segment {
             os.writeInt(block.offset);
             os.writeInt(block.length);
             os.writeByte(block.compressionType.code);
+            os.flush();
             return Short.BYTES + block.startKey.length() + Integer.BYTES + Integer.BYTES + Byte.BYTES;
         }
 
@@ -308,7 +319,7 @@ public class Segment {
     }
 
     private static class BlockWriter {
-        public static final CompressionType BLOCK_COMPRESSION_TYPE = CompressionType.SNAPPY;
+        public static final CompressionType BLOCK_COMPRESSION_TYPE = CompressionType.NONE;
         private final List<KeyValueEntry> entries = new ArrayList<>();
         private int totalBytes;
 
@@ -359,18 +370,20 @@ public class Segment {
 
         public static SegmentMetadata load(String fileName) {
             try (RandomAccessFile f = new RandomAccessFile(fileName, "r")) {
-                f.seek(f.length() - 4 * Integer.BYTES);
-                int blockOffset = f.readInt();
+                // seek to the start of fixed length fields
+                f.seek(f.length() - (4 * Integer.BYTES));
+                int blockIndexOffset = f.readInt();
                 int minKeyOffset = f.readInt();
                 int keyCount = f.readInt();
                 int totalBytes = f.readInt();
 
+                // now seek back where min & max keys were written
                 f.seek(minKeyOffset);
                 short minKeyLen = f.readShort();
                 String minKey = readString(f, minKeyLen);
                 short maxKeyLen = f.readShort();
                 String maxKey = readString(f, maxKeyLen);
-                return new SegmentMetadata(blockOffset, minKey, maxKey, keyCount, totalBytes);
+                return new SegmentMetadata(blockIndexOffset, minKey, maxKey, keyCount, totalBytes);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -378,15 +391,16 @@ public class Segment {
 
         public static SegmentMetadata writeTo(int offset, int blockIndexOffset, String minKey, String maxKey, int keyCount, DataOutputStream os) {
             try {
+                // write the variable lenght fields first
                 os.writeShort(minKey.length());
                 os.write(minKey.getBytes());
                 os.writeShort(maxKey.length());
                 os.write(maxKey.getBytes());
 
+                // now write the fixed length fields
                 os.writeInt(blockIndexOffset);
-                os.writeInt(offset);
+                os.writeInt(offset); // offset is the minKeyOffset where we started writing from
                 os.writeInt(keyCount);
-
                 int totalBytes = offset + Short.BYTES + minKey.length() + Short.BYTES + maxKey.length() + (4 * Integer.BYTES);
                 os.writeInt(totalBytes);
 
