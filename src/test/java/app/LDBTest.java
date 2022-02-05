@@ -7,12 +7,11 @@ import store.ldb.LDB;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
+import static java.lang.String.format;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class LDBTest {
@@ -24,27 +23,28 @@ public class LDBTest {
         deleteDataDir();
     }
 
-    @Test
+    @Test()
     public void testMultipleSetsAndGetsWithCompactorOn() throws InterruptedException {
-        store = new LDB(basedir.getPath(), 100, 1, 1);
+        final int maxBlockSize = 10; // force multiple blocks to be written per segment
+        final int maxSegmentSize = 20;
+
+        store = new LDB(basedir.getPath(), maxSegmentSize, 1, 1, maxBlockSize);
         store.pauseCompactor();
 
-        final int max = 100;
+        final int max = 10;
         for (int i = 0; i < max; i++) {
             store.set(String.valueOf(i), String.valueOf(i));
         }
-        for (int n = 0; n < 100; n++) {
-            System.out.println("n = " + n);
-            for (int i = 0; i < max; i++) {
-                assertEquals(String.valueOf(i), store.get(String.valueOf(i)).orElseThrow());
-            }
-            Thread.sleep(100);
+        for (int i = 0; i < max; i++) {
+            final String s = String.valueOf(i);
+            String msg = format("key %s not found", s);
+            assertEquals(s, store.get(s).orElseThrow(() -> new AssertionError(msg)));
         }
     }
 
     @Test
     public void testMultipleSetsAndGets() {
-        store = new LDB(basedir.getPath(), 1, 1, 3);
+        store = new LDB(basedir.getPath(), 1, 1, 3, 100);
         store.pauseCompactor();
 
         final int max = 10;
@@ -72,14 +72,14 @@ public class LDBTest {
 
     @Test
     public void testBlockStorage() {
-        store = new LDB(basedir.getPath(), 1, 1, 1);
+        store = new LDB(basedir.getPath(), 1, 1, 1, 100);
         store.pauseCompactor();
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal1", "level0/seg0");
 
-        store = new LDB(basedir.getPath(), 1, 1, 1);
+        store = new LDB(basedir.getPath(), 1, 1, 1, 100);
         store.pauseCompactor();
 
         assertEquals("a", store.get("1").orElseThrow());
@@ -92,7 +92,7 @@ public class LDBTest {
 
     @Test
     public void testLevelZeroCompactionsHappenFromOldestToNewest() {
-        store = new LDB(basedir.getPath(), 1, 1, 2);
+        store = new LDB(basedir.getPath(), 1, 1, 2, 100);
         store.pauseCompactor();
 
         store.set("1", "a");
@@ -111,7 +111,7 @@ public class LDBTest {
 
     @Test
     public void testTwoLevelOverlappingCompactions() {
-        store = new LDB(basedir.getPath(), 1, 1, 2);
+        store = new LDB(basedir.getPath(), 1, 1, 2, 100);
         store.pauseCompactor();
 
         store.set("1", "a");
@@ -145,7 +145,7 @@ public class LDBTest {
 
     @Test
     public void testThreeLevelOverlappingCompactions() throws InterruptedException {
-        store = new LDB(basedir.getPath(), 1, 1, 3);
+        store = new LDB(basedir.getPath(), 1, 1, 3, 100);
         store.pauseCompactor();
 
         store.set("1", "a");

@@ -31,7 +31,7 @@ public class IntegrationTest {
                     assertEquals(StatusCode.OK.value(), rsp.code(), msg);
                     assertTrue(rsp.body().string().contains("7707d6a0-61b5-11ec-9f10-0800200c9a66" + n), msg);
                 }
-                if (n % 10000 == 0) {
+                if (n % 1000 == 0) {
                     System.out.println(n);
                 }
             } catch (IOException e) {

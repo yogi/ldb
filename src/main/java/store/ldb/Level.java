@@ -14,8 +14,8 @@ import static java.lang.String.format;
 
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
-    public static final Comparator<Segment> SEGMENT_NUM_DESC_COMPARATOR = (o1, o2) -> o2.num - o1.num;
-    public static final Comparator<Segment> SEGMENT_KEY_ASC_COMPARATOR =
+    public static final Comparator<Segment> NUM_DESC_SEGMENT_COMPARATOR = (o1, o2) -> o2.num - o1.num;
+    public static final Comparator<Segment> KEY_ASC_SEGMENT_COMPARATOR =
             Comparator.comparing(Segment::getMinKey)
                     .thenComparing(Segment::getMaxKey)
                     .thenComparing(Segment::getNum);
@@ -23,19 +23,21 @@ public class Level {
     private final File dir;
     private final int num;
     private final int maxSegmentSize;
+    private final int maxBlockSize;
     private final TreeSet<Segment> segments;
     private final AtomicInteger nextSegmentNumber;
     private final Comparator<Segment> segmentComparator;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
-    public Level(String dirName, int num, int maxSegmentSize, Comparator<Segment> segmentComparator) {
+    public Level(String dirName, int num, int maxSegmentSize, int maxBlockSize, Comparator<Segment> segmentComparator) {
         LOG.info("create level: {}", num);
         this.num = num;
         this.dir = initDir(dirName, num);
         this.maxSegmentSize = maxSegmentSize;
+        this.maxBlockSize = maxBlockSize;
         this.segmentComparator = segmentComparator;
         this.segments = new TreeSet<>(segmentComparator);
-        Segment.loadAll(dir).forEach(this::addSegment);
+        Segment.loadAll(dir, maxBlockSize).forEach(this::addSegment);
         nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
         segments.forEach(segment -> LOG.info("level {} segment {}", num, segment));
     }
@@ -57,7 +59,7 @@ public class Level {
     }
 
     public Segment createNextSegment() {
-        return new Segment(dir, nextSegmentNumber());
+        return new Segment(dir, nextSegmentNumber(), maxBlockSize);
     }
 
     public void addSegment(Segment segment) {
@@ -82,11 +84,11 @@ public class Level {
         return dir + File.separatorChar + "level" + num;
     }
 
-    static TreeMap<Integer, Level> loadLevels(String dir, int maxSegmentSize, int numLevels) {
+    static TreeMap<Integer, Level> loadLevels(String dir, int maxSegmentSize, int maxBlockSize, int numLevels) {
         TreeMap<Integer, Level> levels = new TreeMap<>();
         for (int i = 0; i < numLevels; i++) {
-            final Comparator<Segment> segmentComparator = i == 0 ? SEGMENT_NUM_DESC_COMPARATOR : SEGMENT_KEY_ASC_COMPARATOR;
-            Level level = new Level(dir, i, maxSegmentSize, segmentComparator);
+            final Comparator<Segment> segmentComparator = i == 0 ? NUM_DESC_SEGMENT_COMPARATOR : KEY_ASC_SEGMENT_COMPARATOR;
+            Level level = new Level(dir, i, maxSegmentSize, maxBlockSize, segmentComparator);
             levels.put(i, level);
         }
         return levels;
@@ -96,9 +98,13 @@ public class Level {
         lock.readLock().lock();
         try {
             for (Segment segment : segments) {
-                Optional<String> value = segment.get(key);
-                if (value.isPresent()) {
-                    return value;
+                if (segment.isKeyInRange(key)) {
+                    Optional<String> value = segment.get(key);
+                    if (value.isPresent()) {
+                        return value;
+                    } else if (isKeySorted()) {
+                        throw new IllegalStateException(format("should not get here: key %s not found in key-sorted segment %s", key, segment));
+                    }
                 }
             }
             return Optional.empty();
@@ -168,7 +174,7 @@ public class Level {
         lock.readLock().lock();
         try {
             List<Segment> list = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
-            if (segmentComparator == SEGMENT_NUM_DESC_COMPARATOR) Collections.reverse(list);
+            if (segmentComparator == NUM_DESC_SEGMENT_COMPARATOR) Collections.reverse(list);
             list = list.subList(0, Math.min(list.size(), limit));
             list.forEach(Segment::markForCompaction);
             return list;
@@ -195,9 +201,13 @@ public class Level {
     }
 
     private void assertLevelIsKeySorted() {
-        if (SEGMENT_KEY_ASC_COMPARATOR != segmentComparator) {
+        if (!isKeySorted()) {
             throw new IllegalStateException("can't get overlapping segments of a level thsi is not key sorted");
         }
+    }
+
+    private boolean isKeySorted() {
+        return KEY_ASC_SEGMENT_COMPARATOR == segmentComparator;
     }
 
     public int segmentCount() {

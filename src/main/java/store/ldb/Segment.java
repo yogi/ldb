@@ -14,9 +14,8 @@ import static store.ldb.StringUtils.isGreaterThanOrEqual;
 
 public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
-    public static final int KB = 1024;
-    public static final int MAX_BLOCK_SIZE = 100 * KB;
 
+    private final int maxBlockSize;
     private final File dir;
     final int num;
     final String fileName;
@@ -26,19 +25,20 @@ public class Segment {
     private final SegmentWriter writer;
     private SegmentMetadata metadata;
 
-    public Segment(File dir, int num) {
+    public Segment(File dir, int num, int maxBlockSize) {
         this.dir = dir;
         this.num = num;
+        this.maxBlockSize = maxBlockSize;
         this.fileName = dir.getPath() + File.separatorChar + "seg" + num;
         this.writer = new SegmentWriter();
         LOG.debug("new segment: {}", fileName);
     }
 
-    public static List<Segment> loadAll(File dir) {
+    public static List<Segment> loadAll(File dir, int maxBlockSize) {
         return Arrays.stream(Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg"))))
                 .map(file -> Integer.parseInt(file.getName().replace("seg", "")))
                 .map(n -> {
-                    final Segment segment = new Segment(dir, n);
+                    final Segment segment = new Segment(dir, n, maxBlockSize);
                     segment.load();
                     return segment;
                 })
@@ -105,6 +105,8 @@ public class Segment {
         public void write(KeyValueEntry entry) {
             assertNotReady();
 
+            LOG.trace("write key {} to block-writer for {}", entry.key, Segment.this);
+
             if (blocks == null) {
                 blocks = new ArrayList<>();
                 startTime = System.currentTimeMillis();
@@ -116,17 +118,18 @@ public class Segment {
                 blockWriter = new BlockWriter();
             }
 
-            if (blockWriter.isFull()) {
+            blockWriter.addEntry(entry);
+            maxKey = entry.key;
+            keyCount += 1;
+            LOG.trace("added key {} to block-writer for {}", entry.key, Segment.this);
+
+            if (blockWriter.isFull(maxBlockSize)) {
                 flushBlockWriter();
-            } else {
-                blockWriter.addEntry(entry);
-                maxKey = entry.key;
-                keyCount += 1;
-                LOG.trace("added key {} to block-writer for {}", entry.key, Segment.this);
             }
         }
 
         private void flushBlockWriter() {
+            LOG.debug("flushing block for {}", fileName);
             Block block = blockWriter.writeTo(os, offset, fileName);
             offset += block.length;
             blocks.add(block);
@@ -179,9 +182,12 @@ public class Segment {
         }
     }
 
+    public boolean isKeyInRange(String key) {
+        return StringUtils.isWithinRange(key, getMinKey(), getMaxKey());
+    }
+
     public Optional<String> get(String key) {
         assertReady();
-        if (!StringUtils.isWithinRange(key, getMinKey(), getMaxKey())) return Optional.empty();
         for (Block block : blocks) {
             if (isGreaterThanOrEqual(key, block.startKey)) {
                 Optional<String> value = block.get(key);
@@ -367,8 +373,8 @@ public class Segment {
             }
         }
 
-        public boolean isFull() {
-            return totalBytes > MAX_BLOCK_SIZE;
+        public boolean isFull(int maxBlockSize) {
+            return totalBytes >= maxBlockSize;
         }
 
         public void addEntry(KeyValueEntry entry) {
@@ -467,7 +473,7 @@ public class Segment {
 
         @Override
         public KeyValueEntry next() {
-            if(entries.isEmpty()) {
+            if (entries.isEmpty()) {
                 entries.addAll(blockIterator.next().loadAllEntries());
             }
             return entries.poll();
