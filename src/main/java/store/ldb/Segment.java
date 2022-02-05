@@ -122,6 +122,7 @@ public class Segment {
                 blockWriter.addEntry(entry);
                 maxKey = entry.key;
                 keyCount += 1;
+                LOG.trace("added key {} to block-writer for {}", entry.key, Segment.this);
             }
         }
 
@@ -189,7 +190,7 @@ public class Segment {
                 }
             }
         }
-        throw new IllegalStateException(format("should not reach here - key %s not found in blocks for segment %s", key, this));
+        return Optional.empty(); // can happen only at Level0
     }
 
     public int getNum() {
@@ -223,7 +224,7 @@ public class Segment {
     public String toString() {
         return metadata == null ?
                 format("[Segment %s]", fileName) :
-                format("[Segment %s min:%s max:%s, blocks: %s]", fileName, getMinKey(), getMaxKey(), blocks);
+                format("[Segment %s min:%s max:%s]", fileName, getMinKey(), getMaxKey());
     }
 
     private static class Block {

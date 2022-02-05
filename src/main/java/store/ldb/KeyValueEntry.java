@@ -88,4 +88,13 @@ public class KeyValueEntry {
     public static long getFlushCount() {
         return flushCount.get();
     }
+
+    @Override
+    public String toString() {
+        return "KeyValueEntry{" +
+                "metadata=" + metadata +
+                ", key='" + key + '\'' +
+                ", value='" + value + '\'' +
+                '}';
+    }
 }

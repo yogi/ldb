@@ -63,7 +63,6 @@ public class Level {
     public void addSegment(Segment segment) {
         lock.writeLock().lock();
         try {
-            LOG.debug("addSegment {} to level {}, segments {}", segment, dirPathName(), segments);
             if (segment.isReady()) {
                 throw new IllegalStateException("segment already ready: " + segment + " for level: " + this);
             }

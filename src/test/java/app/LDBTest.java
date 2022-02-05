@@ -25,6 +25,24 @@ public class LDBTest {
     }
 
     @Test
+    public void testMultipleSetsAndGetsWithCompactorOn() throws InterruptedException {
+        store = new LDB(basedir.getPath(), 100, 1, 1);
+        store.pauseCompactor();
+
+        final int max = 100;
+        for (int i = 0; i < max; i++) {
+            store.set(String.valueOf(i), String.valueOf(i));
+        }
+        for (int n = 0; n < 100; n++) {
+            System.out.println("n = " + n);
+            for (int i = 0; i < max; i++) {
+                assertEquals(String.valueOf(i), store.get(String.valueOf(i)).orElseThrow());
+            }
+            Thread.sleep(100);
+        }
+    }
+
+    @Test
     public void testMultipleSetsAndGets() {
         store = new LDB(basedir.getPath(), 1, 1, 3);
         store.pauseCompactor();

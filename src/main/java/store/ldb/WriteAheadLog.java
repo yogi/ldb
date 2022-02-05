@@ -125,7 +125,7 @@ public class WriteAheadLog {
 
     public void append(SetCmd cmd) {
         try {
-            LOG.debug("append {} to {}", cmd.key, walFileName());
+            LOG.trace("append {} to {}", cmd.key, walFileName());
             KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.code, cmd.key, cmd.value);
             entry.writeTo(os);
             totalBytes.addAndGet(entry.totalBytes());
