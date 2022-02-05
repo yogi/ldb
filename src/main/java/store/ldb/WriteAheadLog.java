@@ -108,8 +108,7 @@ public class WriteAheadLog {
         }
         int count = 0;
         long start = System.currentTimeMillis();
-        try {
-            DataInputStream is = new DataInputStream(new BufferedInputStream(new FileInputStream(walFileName())));
+        try (DataInputStream is = new DataInputStream(new BufferedInputStream(new FileInputStream(walFileName())))) {
             while (is.available() > 0) {
                 KeyValueEntry entry = KeyValueEntry.readFrom(is);
                 memtable.put(entry.key, entry.value);
@@ -119,7 +118,6 @@ public class WriteAheadLog {
                 }
             }
             LOG.debug("replayed from wal: {} keys, store-size: {}, in {} ms", count, memtable.size(), (System.currentTimeMillis() - start));
-            is.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

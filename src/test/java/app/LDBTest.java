@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -49,8 +50,6 @@ public class LDBTest {
                 assertEquals(String.valueOf(j), store.get(String.valueOf(j)).orElseThrow());
             }
         }
-//        assertFiles("wal2", "level0/seg1", "level1/seg0");
-
     }
 
     @Test
