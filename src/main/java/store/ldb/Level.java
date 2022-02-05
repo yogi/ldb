@@ -162,7 +162,7 @@ public class Level {
     }
 
     public long maxSegmentSize() {
-        return (long) maxSegmentSize * (this.num + 1);
+        return maxSegmentSize;
     }
 
     @Override
