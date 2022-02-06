@@ -6,9 +6,10 @@ request = function()
     count = tostring(counter)
     probeId = "PRB" .. count
     path = "/probe/" .. probeId .. "/latest"
+    io.write(string.format("probe %s %d\n", probeId, counter))
     return wrk.format(nil, path)
 end
 
--- done = function(summary, latency, requests)
---     io.write(string.format("total requests: %d\n", summary.requests))
--- end
+done = function(summary, latency, requests)
+    io.write(string.format("total requests: %d\n", summary.requests))
+end

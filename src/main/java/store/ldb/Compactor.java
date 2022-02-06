@@ -25,7 +25,10 @@ public class Compactor {
     public static void startAll(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
         compactors = new ArrayList<>();
         for (int i = 0; i < levels.size() - 1; i++) {
-            Compactor compactor = new Compactor(levels.get(i), levels.get(i + 1), minCompactionSegmentCount);
+            final Level level = levels.get(i);
+            final Level nextLevel = levels.get(i + 1);
+            final int compactionThreshold = minCompactionSegmentCount * (level.getNum() + 1) * 2;
+            Compactor compactor = new Compactor(level, nextLevel, compactionThreshold);
             compactors.add(compactor);
             compactor.start();
         }
@@ -99,7 +102,7 @@ public class Compactor {
     void runCompaction() {
         if (compactionInProgress.get()) return;
 
-        final List<Segment> fromSegments = level.markSegmentsForCompaction(minCompactionSegmentCount * (level.getNum() + 1) * 2);
+        final List<Segment> fromSegments = level.markSegmentsForCompaction(minCompactionSegmentCount);
         if (fromSegments.isEmpty()) return;
 
         final String minKey = Collections.min(fromSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));

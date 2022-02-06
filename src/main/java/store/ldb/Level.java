@@ -98,13 +98,13 @@ public class Level {
         lock.readLock().lock();
         try {
             for (Segment segment : segments) {
-                if (segment.isKeyInRange(key)) {
-                    Optional<String> value = segment.get(key);
-                    if (value.isPresent()) {
-                        return value;
-                    } else if (isKeySorted()) {
-                        throw new IllegalStateException(format("should not get here: key %s not found in key-sorted segment %s", key, segment));
-                    }
+                if (!segment.isKeyInRange(key)) continue;
+                Optional<String> value = segment.get(key);
+                if (value.isPresent()) {
+                    return value;
+                }
+                if (isKeySorted()) {
+                    throw new IllegalStateException(format("should not get here: key %s not found in key-sorted segment %s", key, segment));
                 }
             }
             return Optional.empty();
