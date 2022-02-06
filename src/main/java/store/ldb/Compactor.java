@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class Compactor {
@@ -22,12 +23,12 @@ public class Compactor {
     private final AtomicBoolean compactionInProgress = new AtomicBoolean();
     private final Semaphore pause = new Semaphore(1);
 
-    public static void startAll(TreeMap<Integer, Level> levels, int minCompactionSegmentCount) {
+    public static void startAll(TreeMap<Integer, Level> levels, Function<Level, Integer> compactionSegmentLimitProvider) {
         compactors = new ArrayList<>();
         for (int i = 0; i < levels.size() - 1; i++) {
             final Level level = levels.get(i);
             final Level nextLevel = levels.get(i + 1);
-            final int compactionThreshold = minCompactionSegmentCount * (level.getNum() + 1) * 2;
+            final int compactionThreshold = compactionSegmentLimitProvider.apply(level);
             Compactor compactor = new Compactor(level, nextLevel, compactionThreshold);
             compactors.add(compactor);
             compactor.start();

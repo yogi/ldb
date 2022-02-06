@@ -24,11 +24,11 @@ public class LDBTest {
     }
 
     @Test()
-    public void testMultipleSetsAndGetsWithCompactorOn() throws InterruptedException {
+    public void testMultipleSetsAndGetsWithCompactorOn() {
         final int maxBlockSize = 10; // force multiple blocks to be written per segment
         final int maxSegmentSize = 20;
 
-        store = new LDB(basedir.getPath(), maxSegmentSize, 1, 1, maxBlockSize);
+        store = new LDB(basedir.getPath(), maxSegmentSize, (level) -> 1, 1, maxBlockSize);
         store.pauseCompactor();
 
         final int max = 10;
@@ -44,7 +44,7 @@ public class LDBTest {
 
     @Test
     public void testMultipleSetsAndGets() {
-        store = new LDB(basedir.getPath(), 1, 1, 3, 100);
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 3, 100);
         store.pauseCompactor();
 
         final int max = 10;
@@ -72,14 +72,14 @@ public class LDBTest {
 
     @Test
     public void testBlockStorage() {
-        store = new LDB(basedir.getPath(), 1, 1, 1, 100);
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 1, 100);
         store.pauseCompactor();
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal1", "level0/seg0");
 
-        store = new LDB(basedir.getPath(), 1, 1, 1, 100);
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 1, 100);
         store.pauseCompactor();
 
         assertEquals("a", store.get("1").orElseThrow());
@@ -92,7 +92,7 @@ public class LDBTest {
 
     @Test
     public void testLevelZeroCompactionsHappenFromOldestToNewest() {
-        store = new LDB(basedir.getPath(), 1, 1, 2, 1);
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 2, 1);
         store.pauseCompactor();
 
         store.set("1", "a");
@@ -111,7 +111,7 @@ public class LDBTest {
 
     @Test
     public void testTwoLevelOverlappingCompactions() {
-        store = new LDB(basedir.getPath(), 1, 1, 2, 100);
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 2, 100);
         store.pauseCompactor();
 
         store.set("1", "a");
@@ -144,8 +144,8 @@ public class LDBTest {
     }
 
     @Test
-    public void testThreeLevelOverlappingCompactions() throws InterruptedException {
-        store = new LDB(basedir.getPath(), 1, 1, 3, 100);
+    public void testThreeLevelOverlappingCompactions() {
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 3, 100);
         store.pauseCompactor();
 
         store.set("1", "a");

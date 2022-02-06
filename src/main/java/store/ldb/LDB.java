@@ -11,6 +11,7 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
 
 import static java.lang.String.format;
 
@@ -20,7 +21,7 @@ public class LDB implements Store {
     public static final int KB = 1024;
     public static final int MB = KB * KB;
     public static final int DEFAULT_MAX_SEGMENT_SIZE = 10 * MB;
-    public static final int DEFAULT_MIN_COMPACTION_SEGMENT_COUNT = 5;
+    public static final Function<Level, Integer> DEFAULT_COMPACTION_SEGMENT_COUNT_PROVIDER = level -> 5 * (level.getNum() + 1) * 2;
     public static final int DEFAULT_NUM_LEVELS = 3;
     public static final int DEFAULT_MAX_BLOCK_SIZE = 100 * KB;
 
@@ -32,10 +33,10 @@ public class LDB implements Store {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public LDB(String dir) {
-        this(dir, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_MIN_COMPACTION_SEGMENT_COUNT, DEFAULT_NUM_LEVELS, DEFAULT_MAX_BLOCK_SIZE);
+        this(dir, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_COMPACTION_SEGMENT_COUNT_PROVIDER, DEFAULT_NUM_LEVELS, DEFAULT_MAX_BLOCK_SIZE);
     }
 
-    public LDB(String dir, int maxSegmentSize, int minCompactionSegmentCount, int numLevels, int maxBlockSize) {
+    public LDB(String dir, int maxSegmentSize, Function<Level, Integer> minCompactionSegmentCount, int numLevels, int maxBlockSize) {
         this.dir = dir;
         this.levels = Level.loadLevels(dir, maxSegmentSize, maxBlockSize, numLevels);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
