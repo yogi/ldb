@@ -151,4 +151,12 @@ public class LDB implements Store {
                     key_or_value, maxSize, s.getBytes().length, s));
         }
     }
+
+    @Override
+    public String toString() {
+        return "LDB{" +
+                "dir='" + dir + '\'' +
+                ", levels=" + levels +
+                '}';
+    }
 }
