@@ -14,6 +14,7 @@ import static store.ldb.StringUtils.isGreaterThanOrEqual;
 
 public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
+    public static final int LDB_MARKER = 1279541793;
 
     private final int maxBlockSize;
     private final File dir;
@@ -37,12 +38,21 @@ public class Segment {
     public static List<Segment> loadAll(File dir, int maxBlockSize) {
         return Arrays.stream(Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg"))))
                 .map(file -> Integer.parseInt(file.getName().replace("seg", "")))
-                .map(n -> {
-                    final Segment segment = new Segment(dir, n, maxBlockSize);
-                    segment.load();
-                    return segment;
-                })
+                .map(n -> loadSegment(dir, maxBlockSize, n))
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
+    }
+
+    private static Segment loadSegment(File dir, int maxBlockSize, Integer n) {
+        Segment segment = new Segment(dir, n, maxBlockSize);
+        try {
+            segment.load();
+            return segment;
+        } catch (IOException e) {
+            LOG.info("deleting segment {} - caught exception: {}", segment, e.getMessage());
+            segment.delete();
+            return null;
+        }
     }
 
     public void writeMemtable(TreeMap<String, String> memtable) {
@@ -164,7 +174,7 @@ public class Segment {
         }
     }
 
-    public void load() {
+    public void load() throws IOException {
         assertNotReady();
         metadata = SegmentMetadata.load(fileName);
         blocks = Block.loadBlocks(metadata.blockIndexOffset, metadata.offset, fileName);
@@ -212,7 +222,6 @@ public class Segment {
     }
 
     public void delete() {
-        assertReady();
         File file = new File(fileName);
         LOG.debug("delete segment file: " + file.getPath());
         if (file.exists() && !file.delete()) {
@@ -348,7 +357,7 @@ public class Segment {
     }
 
     private static class BlockWriter {
-        public static final CompressionType BLOCK_COMPRESSION_TYPE = CompressionType.NONE;
+        public static final CompressionType BLOCK_COMPRESSION_TYPE = CompressionType.SNAPPY;
         private final List<KeyValueEntry> entries = new ArrayList<>();
         private int totalBytes;
 
@@ -400,14 +409,21 @@ public class Segment {
             this.totalBytes = totalBytes;
         }
 
-        public static SegmentMetadata load(String fileName) {
+        public static SegmentMetadata load(String fileName) throws IOException {
             try (RandomAccessFile f = new RandomAccessFile(fileName, "r")) {
                 // seek to the start of fixed length fields
-                f.seek(f.length() - (4 * Integer.BYTES));
+                f.seek(f.length() - (5 * Integer.BYTES));
                 int minKeyOffset = f.readInt();
                 int blockIndexOffset = f.readInt();
                 int keyCount = f.readInt();
                 int totalBytes = f.readInt();
+                int marker = f.readInt();
+                if (marker != LDB_MARKER) {
+                    throw new IOException("wrong segment file marker");
+                }
+                if (f.getFilePointer() != f.length()) {
+                    throw new IOException("not at EOF");
+                }
 
                 // now seek back where min & max keys were written
                 f.seek(minKeyOffset);
@@ -416,14 +432,12 @@ public class Segment {
                 short maxKeyLen = f.readShort();
                 String maxKey = readString(f, maxKeyLen);
                 return new SegmentMetadata(minKeyOffset, blockIndexOffset, minKey, maxKey, keyCount, totalBytes);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
             }
         }
 
         public static SegmentMetadata writeTo(int offset, int blockIndexOffset, String minKey, String maxKey, int keyCount, DataOutputStream os) {
             try {
-                // write the variable lenght fields first
+                // write the variable length fields first
                 os.writeShort(minKey.length());
                 os.write(minKey.getBytes());
                 os.writeShort(maxKey.length());
@@ -433,10 +447,12 @@ public class Segment {
                 os.writeInt(offset); // offset is the minKeyOffset where we started writing from
                 os.writeInt(blockIndexOffset);
                 os.writeInt(keyCount);
-                int totalBytes = offset + Short.BYTES + minKey.length() + Short.BYTES + maxKey.length() + (4 * Integer.BYTES);
+                int totalBytes = offset + Short.BYTES + minKey.length() + Short.BYTES + maxKey.length() + (5 * Integer.BYTES);
                 os.writeInt(totalBytes);
+                os.writeInt(LDB_MARKER);
 
                 os.flush();
+
                 return new SegmentMetadata(offset, blockIndexOffset, minKey, maxKey, keyCount, totalBytes);
             } catch (IOException e) {
                 throw new RuntimeException(e);

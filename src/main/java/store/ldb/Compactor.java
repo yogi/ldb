@@ -3,10 +3,6 @@ package store.ldb;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedInputStream;
-import java.io.DataInputStream;
-import java.io.FileInputStream;
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -14,7 +10,7 @@ import java.util.stream.Collectors;
 
 public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
-    public static final int SLEEP_BETWEEN_COMPACTIONS_MS = 10;
+    public static final int SLEEP_BETWEEN_COMPACTIONS_MS = 1;
 
     private static List<Compactor> compactors;
 

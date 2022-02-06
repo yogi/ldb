@@ -24,6 +24,29 @@ public class LDBTest {
     }
 
     @Test()
+    public void testx() throws InterruptedException {
+        final byte l = (byte) 'L';
+        final byte d = (byte) 'D';
+        final byte b = (byte) 'B';
+        final byte e = (byte) '!';
+        int marker = (l << 24) | (d << 16) | (b << 8) | e;
+
+        System.out.println("marker = " + marker);
+
+        System.out.println(Integer.toBinaryString(l));
+        System.out.println(Integer.toBinaryString(d));
+        System.out.println(Integer.toBinaryString(b));
+        System.out.println(Integer.toBinaryString(e));
+        System.out.println(Integer.toBinaryString(marker));
+
+        System.out.println(Integer.toHexString(l));
+        System.out.println(Integer.toHexString(d));
+        System.out.println(Integer.toHexString(b));
+        System.out.println(Integer.toHexString(e));
+
+    }
+
+    @Test()
     public void testMultipleSetsAndGetsWithCompactorOn() throws InterruptedException {
         final int maxBlockSize = 10; // force multiple blocks to be written per segment
         final int maxSegmentSize = 20;
