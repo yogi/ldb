@@ -115,6 +115,8 @@ public class Compactor {
 
         try {
             long start = System.currentTimeMillis();
+            LOG.debug("compacting {} segments: {} (of {}) + {} (of {}) to {} - minKey {}, maxKey {}",
+                    toBeCompacted.size(), fromSegments.size(), level.segmentCount(), overlappingSegments.size(), nextLevel.segmentCount(), nextLevel, minKey, maxKey);
             compactionInProgress.set(true);
             compactAll(toBeCompacted, nextLevel);
             fromSegments.forEach(level::removeSegment);
