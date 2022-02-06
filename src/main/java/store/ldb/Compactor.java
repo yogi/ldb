@@ -116,8 +116,8 @@ public class Compactor {
             fromSegments.forEach(level::removeSegment);
             overlappingSegments.forEach(nextLevel::removeSegment);
             final long timeTaken = System.currentTimeMillis() - start;
-            LOG.debug("compacted in {} ms {} segments: {} + {} (of {}) to {} - minKey {}, maxKey {}",
-                    timeTaken, toBeCompacted.size(), fromSegments.size(), overlappingSegments.size(), nextLevel.segmentCount(), nextLevel, minKey, maxKey);
+            LOG.debug("compacted in {} ms {} segments: {} (of {}) + {} (of {}) to {} - minKey {}, maxKey {}",
+                    timeTaken, toBeCompacted.size(), fromSegments.size(), level.segmentCount(), overlappingSegments.size(), nextLevel.segmentCount(), nextLevel, minKey, maxKey);
         } finally {
             compactionInProgress.set(false);
         }
