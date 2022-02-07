@@ -10,7 +10,6 @@ import java.util.stream.Collectors;
 
 public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
-    public static final int SLEEP_BETWEEN_COMPACTIONS_MS = 1;
 
     private static List<Compactor> compactors;
 
@@ -58,7 +57,7 @@ public class Compactor {
             try {
                 waitIfPaused();
                 runCompaction();
-                sleepSilently(SLEEP_BETWEEN_COMPACTIONS_MS);
+                sleepSilently();
             } catch (Exception e) {
                 LOG.error("caught exception in compact loop, ignoring and retrying", e);
             }
@@ -130,12 +129,6 @@ public class Compactor {
         result.addAll(fromSegments);
         result.addAll(toSegments);
         return result;
-    }
-
-    private List<Segment> takeAtMost(List<Segment> segments, int max) {
-        return segments.isEmpty() ?
-                Collections.emptyList() :
-                segments.subList(0, Math.min(segments.size(), max));
     }
 
     public void compactAll(List<Segment> segments, Level toLevel) {
@@ -229,9 +222,9 @@ public class Compactor {
         }
     }
 
-    private void sleepSilently(int sleepBetweenCompactionsMs) {
+    private void sleepSilently() {
         try {
-            Thread.sleep(sleepBetweenCompactionsMs);
+            Thread.sleep(config.sleepBetweenCompactionsMs);
         } catch (InterruptedException e) {
             // ignore
         }

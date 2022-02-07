@@ -5,12 +5,14 @@ import java.util.function.Function;
 public class Config {
     public static final int KB = 1024;
     public static final int MB = KB * KB;
+
     public final CompressionType compressionType;
     public final int maxSegmentSize;
     public final Function<Level, Integer> levelCompactionThreshold;
     public int numLevels;
     public final int maxBlockSize;
     public final int maxWalSize;
+    public final long sleepBetweenCompactionsMs;
 
     public static Config defaultConfig() {
         return builder().
@@ -20,16 +22,18 @@ public class Config {
                 withNumLevels(4).
                 withMaxBlockSize(100 * KB).
                 withMaxWalSize(4 * MB).
+                withSleepBetweenCompactionsMs(1).
                 build();
     }
 
-    public Config(CompressionType compressionType, int maxSegmentSize, Function<Level, Integer> levelCompactionThreshold, int numLevels, int maxBlockSize, int maxWalSize) {
+    public Config(CompressionType compressionType, int maxSegmentSize, Function<Level, Integer> levelCompactionThreshold, int numLevels, int maxBlockSize, int maxWalSize, long sleepBetweenCompactionsMs) {
         this.compressionType = compressionType;
         this.maxSegmentSize = maxSegmentSize;
         this.levelCompactionThreshold = levelCompactionThreshold;
         this.numLevels = numLevels;
         this.maxBlockSize = maxBlockSize;
         this.maxWalSize = maxWalSize;
+        this.sleepBetweenCompactionsMs = sleepBetweenCompactionsMs;
     }
 
     public static ConfigBuilder builder() {
@@ -43,9 +47,10 @@ public class Config {
         private int numLevels;
         private int maxBlockSize;
         private int maxWalSize;
+        private long sleepBetweenCompactionsMs;
 
         public Config build() {
-            return new Config(compressionType, maxSegmentSize, levelCompactionThreshold, numLevels, maxBlockSize, maxWalSize);
+            return new Config(compressionType, maxSegmentSize, levelCompactionThreshold, numLevels, maxBlockSize, maxWalSize, sleepBetweenCompactionsMs);
         }
 
         public ConfigBuilder withCompressionType(CompressionType compressionType) {
@@ -75,6 +80,11 @@ public class Config {
 
         public ConfigBuilder withMaxWalSize(int size) {
             this.maxWalSize = size;
+            return this;
+        }
+
+        public ConfigBuilder withSleepBetweenCompactionsMs(int ms) {
+            this.sleepBetweenCompactionsMs = ms;
             return this;
         }
     }
