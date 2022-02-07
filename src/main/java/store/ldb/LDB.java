@@ -19,10 +19,8 @@ public class LDB implements Store {
 
     public static final int KB = 1024;
     public static final int MB = KB * KB;
-    public static final int WAL_SIZE_LIMIT = 4 * MB;
 
     private final String dir;
-    private final int walSizeLimit;
     private final TreeMap<Integer, Level> levels;
     private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
     private final Config config;
@@ -31,7 +29,7 @@ public class LDB implements Store {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public LDB(String dir) {
-        this(dir, WAL_SIZE_LIMIT, defaultConfig());
+        this(dir, defaultConfig());
     }
 
     private static Config defaultConfig() {
@@ -41,13 +39,13 @@ public class LDB implements Store {
                 withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
                 withNumLevels(4).
                 withMaxBlockSize(100 * KB).
+                withMaxWalSize(4 * MB).
                 build();
     }
 
-    public LDB(String dir, int walSizeLimit, Config config) {
+    public LDB(String dir, Config config) {
         this.config = config;
         this.dir = dir;
-        this.walSizeLimit = walSizeLimit;
         this.levels = Level.loadLevels(dir, config);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
         Compactor.startAll(levels, config);
@@ -118,7 +116,7 @@ public class LDB implements Store {
     }
 
     private boolean walThresholdCrossed(WriteAheadLog wal) {
-        return wal.totalBytes() >= walSizeLimit;
+        return wal.totalBytes() >= config.maxWalSize;
     }
 
     @Override

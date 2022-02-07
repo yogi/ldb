@@ -8,13 +8,15 @@ public class Config {
     public final Function<Level, Integer> levelCompactionThreshold;
     public int numLevels;
     public final int maxBlockSize;
+    public final int maxWalSize;
 
-    public Config(CompressionType compressionType, int maxSegmentSize, Function<Level, Integer> levelCompactionThreshold, int numLevels, int maxBlockSize) {
+    public Config(CompressionType compressionType, int maxSegmentSize, Function<Level, Integer> levelCompactionThreshold, int numLevels, int maxBlockSize, int maxWalSize) {
         this.compressionType = compressionType;
         this.maxSegmentSize = maxSegmentSize;
         this.levelCompactionThreshold = levelCompactionThreshold;
         this.numLevels = numLevels;
         this.maxBlockSize = maxBlockSize;
+        this.maxWalSize = maxWalSize;
     }
 
     public static ConfigBuilder builder() {
@@ -27,9 +29,10 @@ public class Config {
         private Function<Level, Integer> levelCompactionThreshold;
         private int numLevels;
         private int maxBlockSize;
+        private int maxWalSize;
 
         public Config build() {
-            return new Config(compressionType, maxSegmentSize, levelCompactionThreshold, numLevels, maxBlockSize);
+            return new Config(compressionType, maxSegmentSize, levelCompactionThreshold, numLevels, maxBlockSize, maxWalSize);
         }
 
         public ConfigBuilder withCompressionType(CompressionType compressionType) {
@@ -54,6 +57,11 @@ public class Config {
 
         public ConfigBuilder withMaxBlockSize(int size) {
             this.maxBlockSize = size;
+            return this;
+        }
+
+        public ConfigBuilder withMaxWalSize(int size) {
+            this.maxWalSize = size;
             return this;
         }
     }
