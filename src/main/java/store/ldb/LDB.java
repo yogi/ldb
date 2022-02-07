@@ -20,7 +20,6 @@ public class LDB implements Store {
     public static final int KB = 1024;
     public static final int MB = KB * KB;
     public static final int WAL_SIZE_LIMIT = 4 * MB;
-    public static final int DEFAULT_NUM_LEVELS = 4;
     public static final int DEFAULT_MAX_BLOCK_SIZE = 100 * KB;
 
     private final String dir;
@@ -33,7 +32,7 @@ public class LDB implements Store {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public LDB(String dir) {
-        this(dir, DEFAULT_NUM_LEVELS, DEFAULT_MAX_BLOCK_SIZE, WAL_SIZE_LIMIT, defaultConfig());
+        this(dir, DEFAULT_MAX_BLOCK_SIZE, WAL_SIZE_LIMIT, defaultConfig());
     }
 
     private static Config defaultConfig() {
@@ -41,14 +40,15 @@ public class LDB implements Store {
                 withCompressionType(CompressionType.NONE).
                 withMaxSegmentSize(2 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
+                withNumLevels(4).
                 build();
     }
 
-    public LDB(String dir, int numLevels, int maxBlockSize, int walSizeLimit, Config config) {
+    public LDB(String dir, int maxBlockSize, int walSizeLimit, Config config) {
         this.config = config;
         this.dir = dir;
         this.walSizeLimit = walSizeLimit;
-        this.levels = Level.loadLevels(dir, maxBlockSize, numLevels, config);
+        this.levels = Level.loadLevels(dir, maxBlockSize, config);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
         Compactor.startAll(levels, config);
         this.memtable = new TreeMap<>();

@@ -6,13 +6,11 @@ import org.junit.jupiter.api.Test;
 import store.ldb.CompressionType;
 import store.ldb.Config;
 import store.ldb.LDB;
-import store.ldb.Level;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.TreeSet;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,12 +25,14 @@ public class LDBTest {
         deleteDataDir();
         defaultConfig = new Config.ConfigBuilder()
                 .withCompressionType(CompressionType.NONE)
-                .withLevelCompactionThreshold((level) -> 1);
+                .withLevelCompactionThreshold((level) -> 1)
+                .withNumLevels(1);
     }
 
     @Test
     public void testMultipleSetsAndGets() {
-        store = new LDB(basedir.getPath(), 3, 100, 1, defaultConfig.build());
+        final Config config = defaultConfig.withNumLevels(3).build();
+        store = new LDB(basedir.getPath(), 100, 1, config);
         store.pauseCompactor();
 
         final int max = 10;
@@ -60,14 +60,14 @@ public class LDBTest {
 
     @Test
     public void testBlockStorage() {
-        store = new LDB(basedir.getPath(), 1, 100, 1, defaultConfig.build());
+        store = new LDB(basedir.getPath(), 100, 1, defaultConfig.build());
         store.pauseCompactor();
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal1", "level0/seg0");
 
-        store = new LDB(basedir.getPath(), 1, 100, 1, defaultConfig.build());
+        store = new LDB(basedir.getPath(), 100, 1, defaultConfig.build());
         store.pauseCompactor();
 
         assertEquals("a", store.get("1").orElseThrow());
@@ -80,8 +80,11 @@ public class LDBTest {
 
     @Test
     public void testLevelZeroCompactionsHappenFromOldestToNewest() {
-        final Function<Level, Integer> segmentLimit = (level) -> 4;
-        store = new LDB(basedir.getPath(), 2, 1, 1, defaultConfig.withLevelCompactionThreshold(segmentLimit).build());
+        final Config config = defaultConfig
+                .withLevelCompactionThreshold((level) -> 4)
+                .withNumLevels(2)
+                .build();
+        store = new LDB(basedir.getPath(), 1, 1, config);
         store.pauseCompactor();
 
         store.set("1", "a");
@@ -106,7 +109,10 @@ public class LDBTest {
 
     @Test
     public void testThreeLevelOverlappingCompactions() {
-        store = new LDB(basedir.getPath(), 3, 100, 1, defaultConfig.build());
+        final Config config = defaultConfig
+                .withNumLevels(3)
+                .build();
+        store = new LDB(basedir.getPath(), 100, 1, config);
         store.pauseCompactor();
 
         store.set("1", "a");
