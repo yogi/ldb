@@ -31,7 +31,7 @@ public class LDBTest {
 
     @Test
     public void testMultipleSetsAndGets() {
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 3, 100, 1, defaultConfig.build());
+        store = new LDB(basedir.getPath(), (level) -> 1, 3, 100, 1, defaultConfig.build());
         store.pauseCompactor();
 
         final int max = 10;
@@ -59,14 +59,14 @@ public class LDBTest {
 
     @Test
     public void testBlockStorage() {
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 1, 100, 1, defaultConfig.build());
+        store = new LDB(basedir.getPath(), (level) -> 1, 1, 100, 1, defaultConfig.build());
         store.pauseCompactor();
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal1", "level0/seg0");
 
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 1, 100, 1, defaultConfig.build());
+        store = new LDB(basedir.getPath(), (level) -> 1, 1, 100, 1, defaultConfig.build());
         store.pauseCompactor();
 
         assertEquals("a", store.get("1").orElseThrow());
@@ -80,7 +80,7 @@ public class LDBTest {
     @Test
     public void testLevelZeroCompactionsHappenFromOldestToNewest() {
         final Function<Level, Integer> segmentLimit = (level) -> 4;
-        store = new LDB(basedir.getPath(), 1, segmentLimit, 2, 1, 1, defaultConfig.build());
+        store = new LDB(basedir.getPath(), segmentLimit, 2, 1, 1, defaultConfig.build());
         store.pauseCompactor();
 
         store.set("1", "a");
@@ -105,7 +105,7 @@ public class LDBTest {
 
     @Test
     public void testThreeLevelOverlappingCompactions() {
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 3, 100, 1, defaultConfig.build());
+        store = new LDB(basedir.getPath(), (level) -> 1, 3, 100, 1, defaultConfig.build());
         store.pauseCompactor();
 
         store.set("1", "a");

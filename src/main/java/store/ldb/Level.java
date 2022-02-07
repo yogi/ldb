@@ -24,7 +24,6 @@ public class Level {
 
     private final File dir;
     private final int num;
-    private final int maxSegmentSize;
     private final int maxBlockSize;
     private final TreeSet<Segment> segments;
     private final AtomicInteger nextSegmentNumber;
@@ -33,12 +32,11 @@ public class Level {
     private String maxCompactedKey;
     private Config config;
 
-    public Level(String dirName, int num, int maxSegmentSize, int maxBlockSize, Comparator<Segment> segmentComparator, Config config) {
+    public Level(String dirName, int num, int maxBlockSize, Comparator<Segment> segmentComparator, Config config) {
         this.config = config;
         LOG.info("create level: {}", num);
         this.num = num;
         this.dir = initDir(dirName, num);
-        this.maxSegmentSize = maxSegmentSize;
         this.maxBlockSize = maxBlockSize;
         this.segmentComparator = segmentComparator;
         this.segments = new TreeSet<>(segmentComparator);
@@ -89,11 +87,11 @@ public class Level {
         return dir + File.separatorChar + "level" + num;
     }
 
-    static TreeMap<Integer, Level> loadLevels(String dir, int maxSegmentSize, int maxBlockSize, int numLevels, Config config) {
+    static TreeMap<Integer, Level> loadLevels(String dir, int maxBlockSize, int numLevels, Config config) {
         TreeMap<Integer, Level> levels = new TreeMap<>();
         for (int i = 0; i < numLevels; i++) {
             final Comparator<Segment> segmentComparator = i == 0 ? NUM_DESC_SEGMENT_COMPARATOR : KEY_ASC_SEGMENT_COMPARATOR;
-            Level level = new Level(dir, i, maxSegmentSize, maxBlockSize, segmentComparator, config);
+            Level level = new Level(dir, i, maxBlockSize, segmentComparator, config);
             levels.put(i, level);
         }
         return levels;
@@ -161,10 +159,6 @@ public class Level {
         } finally {
             lock.writeLock().unlock();
         }
-    }
-
-    public long maxSegmentSize() {
-        return maxSegmentSize;
     }
 
     @Override

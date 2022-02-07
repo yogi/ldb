@@ -19,17 +19,18 @@ public class Compactor {
     private final Level nextLevel;
     private final int minCompactionSegmentCount;
     private final Thread thread;
+    private final Config config;
     private final AtomicBoolean stop = new AtomicBoolean();
     private final AtomicBoolean compactionInProgress = new AtomicBoolean();
     private final Semaphore pause = new Semaphore(1);
 
-    public static void startAll(TreeMap<Integer, Level> levels, Function<Level, Integer> compactionSegmentLimitProvider) {
+    public static void startAll(TreeMap<Integer, Level> levels, Function<Level, Integer> compactionSegmentLimitProvider, Config config) {
         compactors = new ArrayList<>();
         for (int i = 0; i < levels.size() - 1; i++) {
             final Level level = levels.get(i);
             final Level nextLevel = levels.get(i + 1);
             final int compactionThreshold = compactionSegmentLimitProvider.apply(level);
-            Compactor compactor = new Compactor(level, nextLevel, compactionThreshold);
+            Compactor compactor = new Compactor(level, nextLevel, compactionThreshold, config);
             compactors.add(compactor);
             compactor.start();
         }
@@ -47,11 +48,12 @@ public class Compactor {
         compactors.forEach(Compactor::unpause);
     }
 
-    public Compactor(Level level, Level nextLevel, int minCompactionSegmentCount) {
+    public Compactor(Level level, Level nextLevel, int minCompactionSegmentCount, Config config) {
         this.level = level;
         this.nextLevel = nextLevel;
         this.minCompactionSegmentCount = minCompactionSegmentCount;
         this.thread = new Thread(this::compact, "compactor-" + level.getNum());
+        this.config = config;
     }
 
     private void compact() {
@@ -160,7 +162,7 @@ public class Compactor {
 
                 KeyValueEntry entry = scanner.peek();
                 writer.write(entry);
-                if (writer.isFull(toLevel.maxSegmentSize())) {
+                if (writer.isFull(config.maxSegmentSize)) {
                     writer.done();
                     toLevel.addSegment(segment);
                     segment = null;
