@@ -15,18 +15,16 @@ public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
     public static final int LDB_MARKER = 1279541793;
 
-    private final File dir;
     final int num;
     final String fileName;
+    private final Config config;
     private List<Block> blocks;
     private final AtomicBoolean ready = new AtomicBoolean(false);
     private final AtomicBoolean markedForCompaction = new AtomicBoolean();
     private final SegmentWriter writer;
     private SegmentMetadata metadata;
-    private Config config;
 
     public Segment(File dir, int num, Config config) {
-        this.dir = dir;
         this.num = num;
         this.config = config;
         this.fileName = dir.getPath() + File.separatorChar + "seg" + num;

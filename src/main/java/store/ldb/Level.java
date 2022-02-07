@@ -24,12 +24,12 @@ public class Level {
 
     private final File dir;
     private final int num;
+    private final Config config;
     private final TreeSet<Segment> segments;
     private final AtomicInteger nextSegmentNumber;
     private final Comparator<Segment> segmentComparator;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private String maxCompactedKey;
-    private Config config;
 
     public Level(String dirName, int num, Comparator<Segment> segmentComparator, Config config) {
         this.config = config;
