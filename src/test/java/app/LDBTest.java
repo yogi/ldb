@@ -1,6 +1,7 @@
 package app;
 
 import org.apache.commons.io.FileUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import store.ldb.CompressionType;
@@ -31,11 +32,16 @@ public class LDBTest {
                 .withMaxWalSize(1);
     }
 
+    @AfterEach
+    void tearDown() {
+        if (store != null) store.stop();
+    }
+
     @Test
     public void testMultipleSetsAndGets() {
+        System.out.println("LDBTest.testMultipleSetsAndGets");
         final Config config = defaultConfig.withNumLevels(3).build();
         store = new LDB(basedir.getPath(), config);
-        store.pauseCompactor();
 
         final int max = 10;
         for (int i = 0; i < max; i++) {
@@ -62,15 +68,14 @@ public class LDBTest {
 
     @Test
     public void testBlockStorage() {
+        System.out.println("LDBTest.testBlockStorage");
         store = new LDB(basedir.getPath(), defaultConfig.build());
-        store.pauseCompactor();
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal1", "level0/seg0");
 
         store = new LDB(basedir.getPath(), defaultConfig.build());
-        store.pauseCompactor();
 
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal2", "level0/seg0");
@@ -82,13 +87,13 @@ public class LDBTest {
 
     @Test
     public void testLevelZeroCompactionsHappenFromOldestToNewest() {
+        System.out.println("LDBTest.testLevelZeroCompactionsHappenFromOldestToNewest");
         final Config config = defaultConfig
                 .withLevelCompactionThreshold((level) -> 4)
                 .withNumLevels(2)
                 .withMaxBlockSize(1)
                 .build();
         store = new LDB(basedir.getPath(), config);
-        store.pauseCompactor();
 
         store.set("1", "a");
         store.set("1", "b");
@@ -112,17 +117,18 @@ public class LDBTest {
 
     @Test
     public void testThreeLevelOverlappingCompactions() {
+        System.out.println("LDBTest.testThreeLevelOverlappingCompactions");
         final Config config = defaultConfig
                 .withNumLevels(3)
                 .build();
         store = new LDB(basedir.getPath(), config);
-        store.pauseCompactor();
 
         store.set("1", "a");
         store.set("1", "b");
         store.set("1", "c");
         store.set("1", "d");
         store.runCompaction(0);
+        assertEquals("d", store.get("1").orElseThrow());
         store.runCompaction(1);
         assertEquals("d", store.get("1").orElseThrow());
         assertFiles("wal4", "level2/seg0");

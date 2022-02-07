@@ -9,7 +9,7 @@ public class Config {
     public final CompressionType compressionType;
     public final int maxSegmentSize;
     public final Function<Level, Integer> levelCompactionThreshold;
-    public int numLevels;
+    public final int numLevels;
     public final int maxBlockSize;
     public final int maxWalSize;
     public final long sleepBetweenCompactionsMs;
@@ -34,6 +34,18 @@ public class Config {
         this.maxBlockSize = maxBlockSize;
         this.maxWalSize = maxWalSize;
         this.sleepBetweenCompactionsMs = sleepBetweenCompactionsMs;
+    }
+
+    @Override
+    public String toString() {
+        return "Config{" +
+                "compressionType=" + compressionType +
+                ", maxSegmentSize=" + maxSegmentSize +
+                ", numLevels=" + numLevels +
+                ", maxBlockSize=" + maxBlockSize +
+                ", maxWalSize=" + maxWalSize +
+                ", sleepBetweenCompactionsMs=" + sleepBetweenCompactionsMs +
+                '}';
     }
 
     public static ConfigBuilder builder() {

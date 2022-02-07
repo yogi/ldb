@@ -20,7 +20,8 @@ public class LDB implements Store {
     private final String dir;
     private final TreeMap<Integer, Level> levels;
     private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
-    private final Config config;
+    public final Config config;
+    private final Compactor compactor;
     private volatile TreeMap<String, String> memtable;
     private volatile WriteAheadLog wal;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -34,14 +35,19 @@ public class LDB implements Store {
         this.dir = dir;
         this.levels = Level.loadLevels(dir, config);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
-        Compactor.startAll(levels, config);
+        this.compactor = new Compactor(levels, config);
         this.memtable = new TreeMap<>();
+        Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
+    }
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            LOG.info("shutting down");
-            wal.stop();
-            Compactor.stopAll();
-        }));
+    public void startCompactor() {
+        compactor.start();
+    }
+
+    public void stop() {
+        LOG.info("stop");
+        wal.stop();
+        compactor.stop();
     }
 
     public void set(String key, String value) {
@@ -49,7 +55,6 @@ public class LDB implements Store {
         assertValueSize(value);
         lock.writeLock().lock();
         try {
-            LOG.debug("set {}", key);
             wal.append(new SetCmd(key, value));
             memtable.put(key, value);
             writeSegmentIfNeeded();
@@ -72,7 +77,6 @@ public class LDB implements Store {
                     return value;
                 }
             }
-            LOG.debug("get did not find {}", key);
             return Optional.empty();
         } finally {
             lock.readLock().unlock();
@@ -119,16 +123,8 @@ public class LDB implements Store {
         return stats;
     }
 
-    public void pauseCompactor() {
-        Compactor.pauseAll();
-    }
-
-    public void unpauseCompactor() {
-        Compactor.unpauseAll();
-    }
-
     public void runCompaction(int levelNum) {
-        Compactor.runCompaction(levelNum);
+        compactor.runCompaction(levelNum);
     }
 
     private void assertValueSize(String value) {

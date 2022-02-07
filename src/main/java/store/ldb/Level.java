@@ -11,8 +11,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
-import static store.ldb.StringUtils.isGreaterThan;
-import static store.ldb.StringUtils.isGreaterThanOrEqual;
+import static store.ldb.StringUtils.*;
 
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
@@ -206,17 +205,33 @@ public class Level {
         assertLevelIsKeySorted();
         lock.readLock().lock();
         try {
-            final List<Segment> list = new ArrayList<>(this.segments).stream()
-                    .filter(segment -> StringUtils.isWithinRange(segment.getMinKey(), minKey, maxKey)
-                            || StringUtils.isWithinRange(segment.getMaxKey(), minKey, maxKey)
-                            || (StringUtils.isLessThanOrEqual(segment.getMinKey(), minKey) && isGreaterThanOrEqual(segment.getMaxKey(), maxKey)))
-                    .collect(Collectors.toList());
+            final List<Segment> list = getOverlappingSegments(minKey, maxKey);
             if (list.stream().anyMatch(Segment::isMarkedForCompaction)) return List.of();
             list.forEach(Segment::markForCompaction);
             return list;
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    public int segmentsSpannedBy(String minKey, String maxKey) {
+        assertLevelIsKeySorted();
+        lock.readLock().lock();
+        try {
+            return (int) getOverlappingSegments(minKey, maxKey).stream()
+                    .filter(segment -> !segment.isMarkedForCompaction())
+                    .count();
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private List<Segment> getOverlappingSegments(String minKey, String maxKey) {
+        return new ArrayList<>(this.segments).stream()
+                .filter(segment -> isWithinRange(segment.getMinKey(), minKey, maxKey)
+                        || isWithinRange(segment.getMaxKey(), minKey, maxKey)
+                        || (isLessThanOrEqual(segment.getMinKey(), minKey) && isGreaterThanOrEqual(segment.getMaxKey(), maxKey)))
+                .collect(Collectors.toList());
     }
 
     private void assertLevelIsKeySorted() {
