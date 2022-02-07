@@ -27,7 +27,7 @@ public class LDBTest {
         deleteDataDir();
         defaultConfig = new Config.ConfigBuilder()
                 .withCompressionType(CompressionType.NONE)
-                .withSegmentCompactionThreshold((level) -> 1);
+                .withLevelCompactionThreshold((level) -> 1);
     }
 
     @Test
@@ -81,7 +81,7 @@ public class LDBTest {
     @Test
     public void testLevelZeroCompactionsHappenFromOldestToNewest() {
         final Function<Level, Integer> segmentLimit = (level) -> 4;
-        store = new LDB(basedir.getPath(), 2, 1, 1, defaultConfig.withSegmentCompactionThreshold(segmentLimit).build());
+        store = new LDB(basedir.getPath(), 2, 1, 1, defaultConfig.withLevelCompactionThreshold(segmentLimit).build());
         store.pauseCompactor();
 
         store.set("1", "a");

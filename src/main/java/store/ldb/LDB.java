@@ -40,7 +40,7 @@ public class LDB implements Store {
         return Config.builder().
                 withCompressionType(CompressionType.NONE).
                 withMaxSegmentSize(2 * MB).
-                withSegmentCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
+                withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
                 build();
     }
 

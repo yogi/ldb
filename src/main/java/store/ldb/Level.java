@@ -170,7 +170,7 @@ public class Level {
         lock.readLock().lock();
         try {
             List<Segment> list = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
-            final Integer threshold = config.segmentCompactionThreshold.apply(this);
+            final Integer threshold = config.levelCompactionThreshold.apply(this);
             if (list.size() < threshold) return List.of();
             if (this.getNum() == 0) {
                 Collections.reverse(list); // compact all at level-0 from oldest to newest
