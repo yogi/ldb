@@ -166,11 +166,12 @@ public class Level {
         return dirPathName();
     }
 
-    List<Segment> markSegmentsForCompaction(int limit) {
+    List<Segment> markSegmentsForCompaction() {
         lock.readLock().lock();
         try {
             List<Segment> list = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
-            if (list.size() < limit) return List.of();
+            final Integer threshold = config.segmentCompactionThreshold.apply(this);
+            if (list.size() < threshold) return List.of();
             if (this.getNum() == 0) {
                 Collections.reverse(list); // compact all at level-0 from oldest to newest
             } else {

@@ -16,8 +16,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 
 import static java.lang.String.format;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class IntegrationTest {
 
@@ -39,6 +38,9 @@ public class IntegrationTest {
                 queue.add(key);
             }
         }).start();
+
+        Thread.sleep(100);
+        assertFalse(queue.isEmpty());
 
         do {
             String key = queue.take();

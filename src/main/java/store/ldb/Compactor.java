@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class Compactor {
@@ -17,20 +16,18 @@ public class Compactor {
 
     private final Level level;
     private final Level nextLevel;
-    private final int minCompactionSegmentCount;
     private final Thread thread;
     private final Config config;
     private final AtomicBoolean stop = new AtomicBoolean();
     private final AtomicBoolean compactionInProgress = new AtomicBoolean();
     private final Semaphore pause = new Semaphore(1);
 
-    public static void startAll(TreeMap<Integer, Level> levels, Function<Level, Integer> compactionSegmentLimitProvider, Config config) {
+    public static void startAll(TreeMap<Integer, Level> levels, Config config) {
         compactors = new ArrayList<>();
         for (int i = 0; i < levels.size() - 1; i++) {
             final Level level = levels.get(i);
             final Level nextLevel = levels.get(i + 1);
-            final int compactionThreshold = compactionSegmentLimitProvider.apply(level);
-            Compactor compactor = new Compactor(level, nextLevel, compactionThreshold, config);
+            Compactor compactor = new Compactor(level, nextLevel, config);
             compactors.add(compactor);
             compactor.start();
         }
@@ -48,10 +45,9 @@ public class Compactor {
         compactors.forEach(Compactor::unpause);
     }
 
-    public Compactor(Level level, Level nextLevel, int minCompactionSegmentCount, Config config) {
+    public Compactor(Level level, Level nextLevel, Config config) {
         this.level = level;
         this.nextLevel = nextLevel;
-        this.minCompactionSegmentCount = minCompactionSegmentCount;
         this.thread = new Thread(this::compact, "compactor-" + level.getNum());
         this.config = config;
     }
@@ -105,7 +101,7 @@ public class Compactor {
     void runCompaction() {
         if (compactionInProgress.get()) return;
 
-        final List<Segment> fromSegments = level.markSegmentsForCompaction(minCompactionSegmentCount);
+        final List<Segment> fromSegments = level.markSegmentsForCompaction();
         if (fromSegments.isEmpty()) return;
 
         final String minKey = Collections.min(fromSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));

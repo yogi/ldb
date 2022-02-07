@@ -11,7 +11,6 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Function;
 
 import static java.lang.String.format;
 
@@ -21,7 +20,6 @@ public class LDB implements Store {
     public static final int KB = 1024;
     public static final int MB = KB * KB;
     public static final int WAL_SIZE_LIMIT = 4 * MB;
-    public static final Function<Level, Integer> DEFAULT_SEGMENT_LIMIT = level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum());
     public static final int DEFAULT_NUM_LEVELS = 4;
     public static final int DEFAULT_MAX_BLOCK_SIZE = 100 * KB;
 
@@ -35,23 +33,24 @@ public class LDB implements Store {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public LDB(String dir) {
-        this(dir, DEFAULT_SEGMENT_LIMIT, DEFAULT_NUM_LEVELS, DEFAULT_MAX_BLOCK_SIZE, WAL_SIZE_LIMIT, defaultConfig());
+        this(dir, DEFAULT_NUM_LEVELS, DEFAULT_MAX_BLOCK_SIZE, WAL_SIZE_LIMIT, defaultConfig());
     }
 
     private static Config defaultConfig() {
         return Config.builder().
                 withCompressionType(CompressionType.NONE).
                 withMaxSegmentSize(2 * MB).
+                withSegmentCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
                 build();
     }
 
-    public LDB(String dir, Function<Level, Integer> segmentLimit, int numLevels, int maxBlockSize, int walSizeLimit, Config config) {
+    public LDB(String dir, int numLevels, int maxBlockSize, int walSizeLimit, Config config) {
         this.config = config;
         this.dir = dir;
         this.walSizeLimit = walSizeLimit;
         this.levels = Level.loadLevels(dir, maxBlockSize, numLevels, config);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
-        Compactor.startAll(levels, segmentLimit, config);
+        Compactor.startAll(levels, config);
         this.memtable = new TreeMap<>();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
