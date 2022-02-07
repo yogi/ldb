@@ -26,13 +26,14 @@ public class LDBTest {
         defaultConfig = new Config.ConfigBuilder()
                 .withCompressionType(CompressionType.NONE)
                 .withLevelCompactionThreshold((level) -> 1)
-                .withNumLevels(1);
+                .withNumLevels(1)
+                .withMaxBlockSize(100);
     }
 
     @Test
     public void testMultipleSetsAndGets() {
         final Config config = defaultConfig.withNumLevels(3).build();
-        store = new LDB(basedir.getPath(), 100, 1, config);
+        store = new LDB(basedir.getPath(), 1, config);
         store.pauseCompactor();
 
         final int max = 10;
@@ -60,14 +61,14 @@ public class LDBTest {
 
     @Test
     public void testBlockStorage() {
-        store = new LDB(basedir.getPath(), 100, 1, defaultConfig.build());
+        store = new LDB(basedir.getPath(), 1, defaultConfig.build());
         store.pauseCompactor();
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal1", "level0/seg0");
 
-        store = new LDB(basedir.getPath(), 100, 1, defaultConfig.build());
+        store = new LDB(basedir.getPath(), 1, defaultConfig.build());
         store.pauseCompactor();
 
         assertEquals("a", store.get("1").orElseThrow());
@@ -83,8 +84,9 @@ public class LDBTest {
         final Config config = defaultConfig
                 .withLevelCompactionThreshold((level) -> 4)
                 .withNumLevels(2)
+                .withMaxBlockSize(1)
                 .build();
-        store = new LDB(basedir.getPath(), 1, 1, config);
+        store = new LDB(basedir.getPath(), 1, config);
         store.pauseCompactor();
 
         store.set("1", "a");
@@ -112,7 +114,7 @@ public class LDBTest {
         final Config config = defaultConfig
                 .withNumLevels(3)
                 .build();
-        store = new LDB(basedir.getPath(), 100, 1, config);
+        store = new LDB(basedir.getPath(), 1, config);
         store.pauseCompactor();
 
         store.set("1", "a");

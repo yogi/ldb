@@ -15,7 +15,6 @@ public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
     public static final int LDB_MARKER = 1279541793;
 
-    private final int maxBlockSize;
     private final File dir;
     final int num;
     final String fileName;
@@ -26,26 +25,25 @@ public class Segment {
     private SegmentMetadata metadata;
     private Config config;
 
-    public Segment(File dir, int num, int maxBlockSize, Config config) {
+    public Segment(File dir, int num, Config config) {
         this.dir = dir;
         this.num = num;
-        this.maxBlockSize = maxBlockSize;
         this.config = config;
         this.fileName = dir.getPath() + File.separatorChar + "seg" + num;
         this.writer = new SegmentWriter();
         LOG.debug("new segment: {}", fileName);
     }
 
-    public static List<Segment> loadAll(File dir, int maxBlockSize, Config config) {
+    public static List<Segment> loadAll(File dir, Config config) {
         return Arrays.stream(Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg"))))
                 .map(file -> Integer.parseInt(file.getName().replace("seg", "")))
-                .map(n -> loadSegment(dir, maxBlockSize, n, config))
+                .map(n -> loadSegment(dir, n, config))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
 
-    private static Segment loadSegment(File dir, int maxBlockSize, Integer n, Config config) {
-        Segment segment = new Segment(dir, n, maxBlockSize, config);
+    private static Segment loadSegment(File dir, Integer n, Config config) {
+        Segment segment = new Segment(dir, n, config);
         try {
             segment.load();
             return segment;
@@ -134,7 +132,7 @@ public class Segment {
             keyCount += 1;
             LOG.trace("added key {} to block-writer for {}", entry.key, Segment.this);
 
-            if (blockWriter.isFull(maxBlockSize)) {
+            if (blockWriter.isFull(config.maxBlockSize)) {
                 flushBlockWriter();
             }
         }
