@@ -20,12 +20,14 @@ public class LDB implements Store {
 
     public static final int KB = 1024;
     public static final int MB = KB * KB;
-    public static final int DEFAULT_MAX_SEGMENT_SIZE = 10 * MB;
-    public static final Function<Level, Integer> DEFAULT_COMPACTION_SEGMENT_COUNT_PROVIDER = level -> 5 * (level.getNum() + 1) * 2;
-    public static final int DEFAULT_NUM_LEVELS = 3;
+    public static final int WAL_SIZE_LIMIT = 4 * MB;
+    public static final int DEFAULT_MAX_SEGMENT_SIZE = 2 * MB;
+    public static final Function<Level, Integer> DEFAULT_SEGMENT_LIMIT = level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum());
+    public static final int DEFAULT_NUM_LEVELS = 4;
     public static final int DEFAULT_MAX_BLOCK_SIZE = 100 * KB;
 
     private final String dir;
+    private final int walSizeLimit;
     private final TreeMap<Integer, Level> levels;
     private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
     private volatile TreeMap<String, String> memtable;
@@ -33,14 +35,15 @@ public class LDB implements Store {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public LDB(String dir) {
-        this(dir, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_COMPACTION_SEGMENT_COUNT_PROVIDER, DEFAULT_NUM_LEVELS, DEFAULT_MAX_BLOCK_SIZE);
+        this(dir, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_SEGMENT_LIMIT, DEFAULT_NUM_LEVELS, DEFAULT_MAX_BLOCK_SIZE, WAL_SIZE_LIMIT);
     }
 
-    public LDB(String dir, int maxSegmentSize, Function<Level, Integer> minCompactionSegmentCount, int numLevels, int maxBlockSize) {
+    public LDB(String dir, int maxSegmentSize, Function<Level, Integer> segmentLimit, int numLevels, int maxBlockSize, int walSizeLimit) {
         this.dir = dir;
+        this.walSizeLimit = walSizeLimit;
         this.levels = Level.loadLevels(dir, maxSegmentSize, maxBlockSize, numLevels);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
-        Compactor.startAll(levels, minCompactionSegmentCount);
+        Compactor.startAll(levels, segmentLimit);
         this.memtable = new TreeMap<>();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -108,7 +111,7 @@ public class LDB implements Store {
     }
 
     private boolean walThresholdCrossed(WriteAheadLog wal) {
-        return wal.totalBytes() > levels.firstEntry().getValue().maxSegmentSize();
+        return wal.totalBytes() >= walSizeLimit;
     }
 
     @Override

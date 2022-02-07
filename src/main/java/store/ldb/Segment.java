@@ -201,6 +201,7 @@ public class Segment {
             if (isGreaterThanOrEqual(key, block.startKey)) {
                 Optional<String> value = block.get(key);
                 if (value.isPresent()) {
+                    LOG.debug("get() found key {} in {}", key, this);
                     return value;
                 }
             }

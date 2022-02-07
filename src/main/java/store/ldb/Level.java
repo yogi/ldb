@@ -11,6 +11,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
+import static store.ldb.StringUtils.isGreaterThan;
+import static store.ldb.StringUtils.isGreaterThanOrEqual;
 
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
@@ -28,6 +30,7 @@ public class Level {
     private final AtomicInteger nextSegmentNumber;
     private final Comparator<Segment> segmentComparator;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private String maxCompactedKey;
 
     public Level(String dirName, int num, int maxSegmentSize, int maxBlockSize, Comparator<Segment> segmentComparator) {
         LOG.info("create level: {}", num);
@@ -103,9 +106,6 @@ public class Level {
                 if (value.isPresent()) {
                     return value;
                 }
-                if (isKeySorted()) {
-                    throw new IllegalStateException(format("should not get here: key %s not found in key-sorted segment %s", key, segment));
-                }
             }
             return Optional.empty();
         } finally {
@@ -174,13 +174,37 @@ public class Level {
         lock.readLock().lock();
         try {
             List<Segment> list = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
-            if (segmentComparator == NUM_DESC_SEGMENT_COMPARATOR) Collections.reverse(list);
-            list = list.subList(0, Math.min(list.size(), limit));
+            if (list.size() < limit) return List.of();
+            if (this.getNum() == 0) {
+                Collections.reverse(list); // compact all at level-0 from oldest to newest
+            } else {
+                Segment nextSegment = getNextSegmentToCompact(list);
+                if (nextSegment == null) return List.of();
+                list = List.of(nextSegment);
+            }
             list.forEach(Segment::markForCompaction);
             return list;
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    private Segment getNextSegmentToCompact(List<Segment> nonEmptyListOfSegments) {
+        Segment nextSegment;
+        if (maxCompactedKey == null) {
+            nextSegment = nonEmptyListOfSegments.get(0);
+        } else {
+            final Optional<Segment> optionalNext = nonEmptyListOfSegments.stream().
+                    filter(segment -> isGreaterThan(segment.getMinKey(), maxCompactedKey)).
+                    findFirst();
+            if (optionalNext.isEmpty()) {
+                maxCompactedKey = null; // wrap around
+                return null;
+            }
+            nextSegment = optionalNext.get();
+        }
+        maxCompactedKey = nextSegment.getMaxKey();
+        return nextSegment;
     }
 
     public List<Segment> markOverlappingSegmentsForCompaction(String minKey, String maxKey) {
@@ -190,7 +214,7 @@ public class Level {
             final List<Segment> list = new ArrayList<>(this.segments).stream()
                     .filter(segment -> StringUtils.isWithinRange(segment.getMinKey(), minKey, maxKey)
                             || StringUtils.isWithinRange(segment.getMaxKey(), minKey, maxKey)
-                            || (StringUtils.isLessThanOrEqual(segment.getMinKey(), minKey) && StringUtils.isGreaterThanOrEqual(segment.getMaxKey(), maxKey)))
+                            || (StringUtils.isLessThanOrEqual(segment.getMinKey(), minKey) && isGreaterThanOrEqual(segment.getMaxKey(), maxKey)))
                     .collect(Collectors.toList());
             if (list.stream().anyMatch(Segment::isMarkedForCompaction)) return List.of();
             list.forEach(Segment::markForCompaction);

@@ -4,14 +4,15 @@ import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import store.ldb.LDB;
+import store.ldb.Level;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.TreeSet;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static java.lang.String.format;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class LDBTest {
@@ -23,28 +24,9 @@ public class LDBTest {
         deleteDataDir();
     }
 
-    @Test()
-    public void testMultipleSetsAndGetsWithCompactorOn() {
-        final int maxBlockSize = 10; // force multiple blocks to be written per segment
-        final int maxSegmentSize = 20;
-
-        store = new LDB(basedir.getPath(), maxSegmentSize, (level) -> 1, 1, maxBlockSize);
-        store.pauseCompactor();
-
-        final int max = 10;
-        for (int i = 0; i < max; i++) {
-            store.set(String.valueOf(i), String.valueOf(i));
-        }
-        for (int i = 0; i < max; i++) {
-            final String s = String.valueOf(i);
-            String msg = format("key %s not found", s);
-            assertEquals(s, store.get(s).orElseThrow(() -> new AssertionError(msg)));
-        }
-    }
-
     @Test
     public void testMultipleSetsAndGets() {
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 3, 100);
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 3, 100, 1);
         store.pauseCompactor();
 
         final int max = 10;
@@ -72,14 +54,14 @@ public class LDBTest {
 
     @Test
     public void testBlockStorage() {
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 1, 100);
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 1, 100, 1);
         store.pauseCompactor();
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal1", "level0/seg0");
 
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 1, 100);
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 1, 100, 1);
         store.pauseCompactor();
 
         assertEquals("a", store.get("1").orElseThrow());
@@ -92,7 +74,8 @@ public class LDBTest {
 
     @Test
     public void testLevelZeroCompactionsHappenFromOldestToNewest() {
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 2, 1);
+        final Function<Level, Integer> segmentLimit = (level) -> 4;
+        store = new LDB(basedir.getPath(), 1, segmentLimit, 2, 1, 1);
         store.pauseCompactor();
 
         store.set("1", "a");
@@ -102,57 +85,32 @@ public class LDBTest {
 
         store.runCompaction(0);
         assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal2", "level0/seg1", "level1/seg0");
+        assertFiles("wal2", "level0/seg0", "level0/seg1"); // no compactions below limit of 4 for level-0
+
+        store.set("1", "c");
+        store.set("1", "d");
+        store.set("1", "e");
+        store.set("1", "f");
+        assertEquals("f", store.get("1").orElseThrow());  // all level-0 ones should be picked for compactions
+        assertFiles("wal6", "level0/seg0", "level0/seg1", "level0/seg2", "level0/seg3", "level0/seg4", "level0/seg5"); // no compactions below limit of 4 for level-0
 
         store.runCompaction(0);
-        assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal2", "level1/seg1");
-    }
-
-    @Test
-    public void testTwoLevelOverlappingCompactions() {
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 2, 100);
-        store.pauseCompactor();
-
-        store.set("1", "a");
-        assertEquals("a", store.get("1").orElseThrow());
-        assertFiles("wal1", "level0/seg0");
-
-        store.set("2", "b");
-        assertEquals("b", store.get("2").orElseThrow());
-        assertFiles("wal2", "level0/seg0", "level0/seg1");
-
-        store.set("1", "x");
-        assertEquals("x", store.get("1").orElseThrow());
-        assertEquals("b", store.get("2").orElseThrow());
-        assertFiles("wal3", "level0/seg0", "level0/seg1", "level0/seg2");
-
-        store.runCompaction(0);
-        assertEquals("x", store.get("1").orElseThrow());
-        assertEquals("b", store.get("2").orElseThrow());
-        assertFiles("wal3", "level0/seg1", "level0/seg2", "level1/seg0");
-
-        store.runCompaction(0);
-        assertEquals("x", store.get("1").orElseThrow());
-        assertEquals("b", store.get("2").orElseThrow());
-        assertFiles("wal3", "level0/seg2", "level1/seg0", "level1/seg1");
-
-        store.runCompaction(0);
-        assertEquals("x", store.get("1").orElseThrow());
-        assertEquals("b", store.get("2").orElseThrow());
-        assertFiles("wal3", "level1/seg1", "level1/seg2");
+        assertFiles("wal6", "level1/seg0");
     }
 
     @Test
     public void testThreeLevelOverlappingCompactions() {
-        store = new LDB(basedir.getPath(), 1, (level) -> 1, 3, 100);
+        store = new LDB(basedir.getPath(), 1, (level) -> 1, 3, 100, 1);
         store.pauseCompactor();
 
         store.set("1", "a");
+        store.set("1", "b");
+        store.set("1", "c");
+        store.set("1", "d");
         store.runCompaction(0);
         store.runCompaction(1);
-        assertEquals("a", store.get("1").orElseThrow());
-        assertFiles("wal1", "level2/seg0");
+        assertEquals("d", store.get("1").orElseThrow());
+        assertFiles("wal4", "level2/seg0");
     }
 
     private void assertFiles(String... filenames) {

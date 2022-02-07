@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 class BlockWriter {
-    public static final CompressionType BLOCK_COMPRESSION_TYPE = CompressionType.NONE;
+    public static final CompressionType BLOCK_COMPRESSION_TYPE = CompressionType.SNAPPY;
     private final List<KeyValueEntry> entries = new ArrayList<>();
     private int totalBytes;
 
