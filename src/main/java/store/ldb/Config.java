@@ -14,7 +14,7 @@ public class Config {
 
     public static Config defaultConfig() {
         return builder().
-                withCompressionType(CompressionType.NONE).
+                withCompressionType(CompressionType.SNAPPY).
                 withMaxSegmentSize(2 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
                 withNumLevels(4).

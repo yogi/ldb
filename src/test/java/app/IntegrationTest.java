@@ -12,8 +12,12 @@ import store.ldb.LDB;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.lang.String.format;
 import static org.junit.jupiter.api.Assertions.*;
@@ -23,29 +27,55 @@ public class IntegrationTest {
     static OkHttpClient client = new OkHttpClient();
 
     @Test()
-    public void testMultipleSetsAndGetsWithCompactorOn() throws InterruptedException, IOException {
+    public void testMultipleSetsAndGetsWithCompactorOn() throws Exception {
+        final int MAX_KEYS = 10000;
+        final int MAX_READER_THREADS = 5;
+
         File basedir = new File("tmp/ldb");
         if (basedir.exists()) FileUtils.deleteDirectory(basedir);
         LDB store = new LDB(basedir.getPath());
 
         BlockingQueue<String> queue = new LinkedBlockingDeque<>();
         new Thread(() -> {
-            final int max = 10000;
             final String randomString = RandomStringUtils.randomAlphabetic(5 * 1024);
-            for (int i = 0; i < max; i++) {
+            for (int i = 0; i < MAX_KEYS; i++) {
                 final String key = String.valueOf(i);
                 store.set(key, i + "_" + randomString);
+                //System.out.println("set key = " + key);
                 queue.add(key);
             }
         }).start();
 
-        Thread.sleep(100);
-        assertFalse(queue.isEmpty());
+        Thread.sleep(500);
 
-        do {
-            String key = queue.take();
-            assertTrue(store.get(key).orElseThrow(() -> new AssertionError(format("key %s not found", key))).startsWith(key + "_"));
-        } while (!queue.isEmpty());
+        AtomicInteger counter = new AtomicInteger(1);
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < MAX_READER_THREADS; i++) {
+            Thread thread = new Thread(() -> {
+                do {
+                    try {
+                        String key = queue.poll(1000, TimeUnit.MILLISECONDS);
+                        if (key == null) break;
+                        final String value = store.get(key).orElseThrow(() -> new AssertionError(format("key %s not found", key)));
+                        //System.out.println("got value = " + value.substring(0, value.indexOf("_")));
+                        assertTrue(value.startsWith(key + "_"));
+                        if (counter.get() % 100 == 0) System.out.println("counter = " + counter);
+                    } catch (InterruptedException e) {
+                        System.out.println("caught exception in reader thread: " + e);
+                        throw new RuntimeException(e);
+                    }
+                } while (counter.incrementAndGet() <= MAX_KEYS);
+            });
+            thread.setUncaughtExceptionHandler((t, e) -> {
+                System.out.println("caught exception in thread = " + e);
+                fail();
+            });
+            threads.add(thread);
+            thread.start();
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
     }
 
     @Test
