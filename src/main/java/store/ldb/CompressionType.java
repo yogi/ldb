@@ -3,10 +3,8 @@ package store.ldb;
 import org.xerial.snappy.Snappy;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.Optional;
 
-enum CompressionType {
+public enum CompressionType {
     NONE((byte) 1) {
         @Override
         public byte[] uncompress(byte[] bytes) {

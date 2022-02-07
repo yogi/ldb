@@ -7,16 +7,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 class BlockWriter {
-    public static final CompressionType BLOCK_COMPRESSION_TYPE = CompressionType.SNAPPY;
     private final List<KeyValueEntry> entries = new ArrayList<>();
+    private final Config config;
     private int totalBytes;
+
+    public BlockWriter(Config config) {
+        this.config = config;
+    }
 
     public Block writeTo(DataOutputStream os, int offset, String fileName) {
         try {
             byte[] data = compress(entries);
             os.write(data);
             os.flush();
-            return new Block(entries.get(0).key, offset, data.length, BLOCK_COMPRESSION_TYPE, fileName);
+            return new Block(entries.get(0).key, offset, data.length, config.compressionType, fileName);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -28,7 +32,7 @@ class BlockWriter {
             for (KeyValueEntry keyValueEntry : entries) {
                 keyValueEntry.writeTo(os);
             }
-            return BLOCK_COMPRESSION_TYPE.compress(bytes.toByteArray());
+            return config.compressionType.compress(bytes.toByteArray());
         }
     }
 

@@ -30,18 +30,26 @@ public class LDB implements Store {
     private final int walSizeLimit;
     private final TreeMap<Integer, Level> levels;
     private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
+    private final Config config;
     private volatile TreeMap<String, String> memtable;
     private volatile WriteAheadLog wal;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public LDB(String dir) {
-        this(dir, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_SEGMENT_LIMIT, DEFAULT_NUM_LEVELS, DEFAULT_MAX_BLOCK_SIZE, WAL_SIZE_LIMIT);
+        this(dir, DEFAULT_MAX_SEGMENT_SIZE, DEFAULT_SEGMENT_LIMIT, DEFAULT_NUM_LEVELS, DEFAULT_MAX_BLOCK_SIZE, WAL_SIZE_LIMIT, defaultConfig());
     }
 
-    public LDB(String dir, int maxSegmentSize, Function<Level, Integer> segmentLimit, int numLevels, int maxBlockSize, int walSizeLimit) {
+    private static Config defaultConfig() {
+        return Config.builder().
+                withCompressionType(CompressionType.NONE).
+                build();
+    }
+
+    public LDB(String dir, int maxSegmentSize, Function<Level, Integer> segmentLimit, int numLevels, int maxBlockSize, int walSizeLimit, Config config) {
+        this.config = config;
         this.dir = dir;
         this.walSizeLimit = walSizeLimit;
-        this.levels = Level.loadLevels(dir, maxSegmentSize, maxBlockSize, numLevels);
+        this.levels = Level.loadLevels(dir, maxSegmentSize, maxBlockSize, numLevels, config);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
         Compactor.startAll(levels, segmentLimit);
         this.memtable = new TreeMap<>();

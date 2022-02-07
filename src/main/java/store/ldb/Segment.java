@@ -24,26 +24,28 @@ public class Segment {
     private final AtomicBoolean markedForCompaction = new AtomicBoolean();
     private final SegmentWriter writer;
     private SegmentMetadata metadata;
+    private Config config;
 
-    public Segment(File dir, int num, int maxBlockSize) {
+    public Segment(File dir, int num, int maxBlockSize, Config config) {
         this.dir = dir;
         this.num = num;
         this.maxBlockSize = maxBlockSize;
+        this.config = config;
         this.fileName = dir.getPath() + File.separatorChar + "seg" + num;
         this.writer = new SegmentWriter();
         LOG.debug("new segment: {}", fileName);
     }
 
-    public static List<Segment> loadAll(File dir, int maxBlockSize) {
+    public static List<Segment> loadAll(File dir, int maxBlockSize, Config config) {
         return Arrays.stream(Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg"))))
                 .map(file -> Integer.parseInt(file.getName().replace("seg", "")))
-                .map(n -> loadSegment(dir, maxBlockSize, n))
+                .map(n -> loadSegment(dir, maxBlockSize, n, config))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
 
-    private static Segment loadSegment(File dir, int maxBlockSize, Integer n) {
-        Segment segment = new Segment(dir, n, maxBlockSize);
+    private static Segment loadSegment(File dir, int maxBlockSize, Integer n, Config config) {
+        Segment segment = new Segment(dir, n, maxBlockSize, config);
         try {
             segment.load();
             return segment;
@@ -124,7 +126,7 @@ public class Segment {
             }
 
             if (blockWriter == null) {
-                blockWriter = new BlockWriter();
+                blockWriter = new BlockWriter(config);
             }
 
             blockWriter.addEntry(entry);

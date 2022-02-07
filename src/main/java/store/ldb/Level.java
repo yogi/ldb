@@ -31,8 +31,10 @@ public class Level {
     private final Comparator<Segment> segmentComparator;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private String maxCompactedKey;
+    private Config config;
 
-    public Level(String dirName, int num, int maxSegmentSize, int maxBlockSize, Comparator<Segment> segmentComparator) {
+    public Level(String dirName, int num, int maxSegmentSize, int maxBlockSize, Comparator<Segment> segmentComparator, Config config) {
+        this.config = config;
         LOG.info("create level: {}", num);
         this.num = num;
         this.dir = initDir(dirName, num);
@@ -40,7 +42,7 @@ public class Level {
         this.maxBlockSize = maxBlockSize;
         this.segmentComparator = segmentComparator;
         this.segments = new TreeSet<>(segmentComparator);
-        Segment.loadAll(dir, maxBlockSize).forEach(this::addSegment);
+        Segment.loadAll(dir, maxBlockSize, config).forEach(this::addSegment);
         nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
         segments.forEach(segment -> LOG.info("level {} segment {}", num, segment));
     }
@@ -62,7 +64,7 @@ public class Level {
     }
 
     public Segment createNextSegment() {
-        return new Segment(dir, nextSegmentNumber(), maxBlockSize);
+        return new Segment(dir, nextSegmentNumber(), maxBlockSize, config);
     }
 
     public void addSegment(Segment segment) {
@@ -87,11 +89,11 @@ public class Level {
         return dir + File.separatorChar + "level" + num;
     }
 
-    static TreeMap<Integer, Level> loadLevels(String dir, int maxSegmentSize, int maxBlockSize, int numLevels) {
+    static TreeMap<Integer, Level> loadLevels(String dir, int maxSegmentSize, int maxBlockSize, int numLevels, Config config) {
         TreeMap<Integer, Level> levels = new TreeMap<>();
         for (int i = 0; i < numLevels; i++) {
             final Comparator<Segment> segmentComparator = i == 0 ? NUM_DESC_SEGMENT_COMPARATOR : KEY_ASC_SEGMENT_COMPARATOR;
-            Level level = new Level(dir, i, maxSegmentSize, maxBlockSize, segmentComparator);
+            Level level = new Level(dir, i, maxSegmentSize, maxBlockSize, segmentComparator, config);
             levels.put(i, level);
         }
         return levels;
