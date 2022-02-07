@@ -6,7 +6,7 @@ request = function()
     count = tostring(counter)
     probeId = "PRB" .. count
     path = "/probe/" .. probeId .. "/latest"
-    io.write(string.format("probe %s %d\n", probeId, counter))
+    --io.write(string.format("probe %s %d\n", probeId, counter))
     return wrk.format(nil, path)
 end
 
