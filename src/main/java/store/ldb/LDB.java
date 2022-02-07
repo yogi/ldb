@@ -17,9 +17,6 @@ import static java.lang.String.format;
 public class LDB implements Store {
     public static final Logger LOG = LoggerFactory.getLogger(LDB.class);
 
-    public static final int KB = 1024;
-    public static final int MB = KB * KB;
-
     private final String dir;
     private final TreeMap<Integer, Level> levels;
     private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
@@ -29,18 +26,7 @@ public class LDB implements Store {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public LDB(String dir) {
-        this(dir, defaultConfig());
-    }
-
-    private static Config defaultConfig() {
-        return Config.builder().
-                withCompressionType(CompressionType.NONE).
-                withMaxSegmentSize(2 * MB).
-                withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
-                withNumLevels(4).
-                withMaxBlockSize(100 * KB).
-                withMaxWalSize(4 * MB).
-                build();
+        this(dir, Config.defaultConfig());
     }
 
     public LDB(String dir, Config config) {

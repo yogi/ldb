@@ -3,12 +3,25 @@ package store.ldb;
 import java.util.function.Function;
 
 public class Config {
+    public static final int KB = 1024;
+    public static final int MB = KB * KB;
     public final CompressionType compressionType;
     public final int maxSegmentSize;
     public final Function<Level, Integer> levelCompactionThreshold;
     public int numLevels;
     public final int maxBlockSize;
     public final int maxWalSize;
+
+    public static Config defaultConfig() {
+        return builder().
+                withCompressionType(CompressionType.NONE).
+                withMaxSegmentSize(2 * MB).
+                withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
+                withNumLevels(4).
+                withMaxBlockSize(100 * KB).
+                withMaxWalSize(4 * MB).
+                build();
+    }
 
     public Config(CompressionType compressionType, int maxSegmentSize, Function<Level, Integer> levelCompactionThreshold, int numLevels, int maxBlockSize, int maxWalSize) {
         this.compressionType = compressionType;
