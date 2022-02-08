@@ -12,7 +12,7 @@ public class Compactor {
 
     private final Config config;
     private final Thread compactorThread;
-    private final List<LevelCompactor> compactors = new ArrayList<>();
+    private final List<LevelCompactor> levelCompactors = new ArrayList<>();
     private final AtomicBoolean stop = new AtomicBoolean();
 
     public Compactor(TreeMap<Integer, Level> levels, Config aConfig) {
@@ -21,8 +21,8 @@ public class Compactor {
             final Level level = levels.get(i);
             final Level nextLevel = levels.get(i + 1);
             final Level nextToNextLevel = (i + 2) < levels.size() ? levels.get(i + 2) : null;
-            LevelCompactor compactor = new LevelCompactor(level, nextLevel, nextToNextLevel, config);
-            compactors.add(compactor);
+            LevelCompactor levelCompactor = new LevelCompactor(level, nextLevel, nextToNextLevel, config);
+            levelCompactors.add(levelCompactor);
         }
         compactorThread = new Thread(this::compact, "compactor");
     }
@@ -34,47 +34,28 @@ public class Compactor {
     private void compact() {
         LOG.info("compaction loop started");
         while (!stop.get()) {
-            for (LevelCompactor compactor : compactors) {
-                if (stop.get()) break;
-                try {
-                    compactor.runCompaction();
-                    sleepSilently();
-                } catch (Exception e) {
-                    LOG.error("caught exception in compact loop, ignoring and retrying", e);
-                }
+            if (stop.get()) break;
+            try {
+                pickCompactor().ifPresent(LevelCompactor::runCompaction);
+                sleepSilently();
+            } catch (Exception e) {
+                LOG.error("caught exception in compact loop, ignoring and retrying", e);
             }
         }
         LOG.info("compaction loop exited");
     }
 
-    public void runCompaction(int levelNum) {
-        compactors.get(levelNum).runCompaction();
+    private Optional<LevelCompactor> pickCompactor() {
+        final TreeSet<LevelCompactor> set = new TreeSet<>(Comparator.comparing(LevelCompactor::getScore));
+        set.addAll(levelCompactors);
+        final LevelCompactor picked = set.last();
+        return Optional.ofNullable(picked);
     }
 
-    /*
-        public void pause() {
-            LOG.debug("pause");
-            pause.drainPermits();
-        }
+    public void runCompaction(int levelNum) {
+        levelCompactors.get(levelNum).runCompaction();
+    }
 
-        public void unpause() {
-            LOG.debug("pause");
-            pause.release();
-        }
-
-        private void waitIfPaused() {
-            while (true) {
-                try {
-                    pause.acquire();
-                    pause.release();
-                    return;
-                } catch (InterruptedException e) {
-                    // retry acquire
-                }
-            }
-        }
-
-    */
     public void stop() {
         LOG.debug("stop");
         stop.set(true);
@@ -89,11 +70,16 @@ public class Compactor {
         }
     }
 
-    private static class LevelCompactor {
+    static class LevelCompactor {
         private final Level level;
         private final Level nextLevel;
         private final Level nextToNextLevel;
         private final Config config;
+
+        @Override
+        public String toString() {
+            return "[LevelCompactor " + level + "]";
+        }
 
         public LevelCompactor(Level level, Level nextLevel, Level nextToNextLevel, Config config) {
             this.level = level;
@@ -102,7 +88,7 @@ public class Compactor {
             this.config = config;
         }
 
-        void runCompaction() {
+        public void runCompaction() {
             final List<Segment> fromSegments = level.markSegmentsForCompaction();
             if (fromSegments.isEmpty()) return;
 
@@ -113,6 +99,7 @@ public class Compactor {
             List<Segment> toBeCompacted = addLists(fromSegments, overlappingSegments);
             if (toBeCompacted.isEmpty()) return;
 
+            LOG.debug("compacting {}", level);
             long start = System.currentTimeMillis();
             compactSegments(toBeCompacted, nextLevel);
             fromSegments.forEach(level::removeSegment);
@@ -182,6 +169,10 @@ public class Compactor {
         private boolean crossedOverlappingSegmentsThresholdOfNextToNextLevel(String minKey, String maxKey) {
             if (nextToNextLevel == null) return false;
             return nextToNextLevel.segmentsSpannedBy(minKey, maxKey) > 10;
+        }
+
+        public double getScore() {
+            return level.getCompactionScore();
         }
 
         private static class SegmentScanner implements Comparable<SegmentScanner> {

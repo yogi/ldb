@@ -22,7 +22,7 @@ public class Config {
                 withNumLevels(4).
                 withMaxBlockSize(100 * KB).
                 withMaxWalSize(4 * MB).
-                withSleepBetweenCompactionsMs(1).
+                withSleepBetweenCompactionsMs(100).
                 build();
     }
 
