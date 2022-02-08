@@ -34,6 +34,7 @@ public class IntegrationTest {
         File basedir = new File("tmp/ldb");
         if (basedir.exists()) FileUtils.deleteDirectory(basedir);
         Ldb store = new Ldb(basedir.getPath());
+        store.startCompactor();
 
         BlockingQueue<String> queue = new LinkedBlockingDeque<>();
         new Thread(() -> {

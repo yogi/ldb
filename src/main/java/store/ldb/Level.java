@@ -170,11 +170,19 @@ public class Level {
     List<Segment> markSegmentsForCompaction() {
         lock.readLock().lock();
         try {
-            List<Segment> list = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
+            List<Segment> list = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toCollection(LinkedList::new));
             final Integer threshold = config.levelCompactionThreshold.apply(this);
             if (list.size() < threshold) return List.of();
             if (this.getNum() == 0) {
-                Collections.reverse(list); // compact all at level-0 from oldest to newest
+                // for level0 pick the oldest and add all overlapping ones for compaction
+                Collections.reverse(list);
+                final Segment picked = list.remove(0);
+                List<Segment> toCompact = new ArrayList<>();
+                toCompact.add(picked);
+                final List<Segment> overlappingSegments = getOverlappingSegments(list, picked.getMinKey(), picked.getMaxKey());
+                LOG.info("adding {} overlapping segments to level0 for {}", overlappingSegments.size(), picked);
+                toCompact.addAll(overlappingSegments);
+                list = toCompact;
             } else {
                 Segment nextSegment = getNextSegmentToCompact(list);
                 if (nextSegment == null) return List.of();
@@ -209,7 +217,7 @@ public class Level {
         assertLevelIsKeySorted();
         lock.readLock().lock();
         try {
-            final List<Segment> list = getOverlappingSegments(minKey, maxKey);
+            final List<Segment> list = getOverlappingSegments(new ArrayList<>(this.segments), minKey, maxKey);
             if (list.stream().anyMatch(Segment::isMarkedForCompaction)) return List.of();
             list.forEach(Segment::markForCompaction);
             return list;
@@ -222,7 +230,7 @@ public class Level {
         assertLevelIsKeySorted();
         lock.readLock().lock();
         try {
-            return (int) getOverlappingSegments(minKey, maxKey).stream()
+            return (int) getOverlappingSegments(new ArrayList<>(this.segments), minKey, maxKey).stream()
                     .filter(segment -> !segment.isMarkedForCompaction())
                     .count();
         } finally {
@@ -230,8 +238,8 @@ public class Level {
         }
     }
 
-    private List<Segment> getOverlappingSegments(String minKey, String maxKey) {
-        return new ArrayList<>(this.segments).stream()
+    private List<Segment> getOverlappingSegments(List<Segment> list, String minKey, String maxKey) {
+        return list.stream()
                 .filter(segment -> isWithinRange(segment.getMinKey(), minKey, maxKey)
                         || isWithinRange(segment.getMaxKey(), minKey, maxKey)
                         || (isLessThanOrEqual(segment.getMinKey(), minKey) && isGreaterThanOrEqual(segment.getMaxKey(), maxKey)))
