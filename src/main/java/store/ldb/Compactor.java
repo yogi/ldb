@@ -48,7 +48,7 @@ public class Compactor {
     private Optional<LevelCompactor> pickCompactor() {
         final TreeSet<LevelCompactor> set = new TreeSet<>(Comparator.comparing(LevelCompactor::getScore));
         set.addAll(levelCompactors);
-        final LevelCompactor picked = set.last();
+        final LevelCompactor picked = set.pollLast();
         return Optional.ofNullable(picked);
     }
 
@@ -78,7 +78,7 @@ public class Compactor {
 
         @Override
         public String toString() {
-            return "[LevelCompactor " + level + "]";
+            return level + ", score " + level.getCompactionScore() + "]";
         }
 
         public LevelCompactor(Level level, Level nextLevel, Level nextToNextLevel, Config config) {
@@ -99,14 +99,13 @@ public class Compactor {
             List<Segment> toBeCompacted = addLists(fromSegments, overlappingSegments);
             if (toBeCompacted.isEmpty()) return;
 
-            LOG.debug("compacting {}", level);
             long start = System.currentTimeMillis();
             compactSegments(toBeCompacted, nextLevel);
             fromSegments.forEach(level::removeSegment);
             overlappingSegments.forEach(nextLevel::removeSegment);
             final long timeTaken = System.currentTimeMillis() - start;
-            LOG.debug("compacted {} segments in {} ms to {}: {}/{} + {}/{} - minKey {}, maxKey {}",
-                    toBeCompacted.size(), timeTaken, nextLevel, fromSegments.size(), level.segmentCount(), overlappingSegments.size(), nextLevel.segmentCount(), minKey, maxKey);
+            LOG.debug("compacted {} {} segments in {} ms - minKey {}, maxKey {}",
+                    level, toBeCompacted.size(), timeTaken, minKey, maxKey);
         }
 
         private List<Segment> addLists(List<Segment> fromSegments, List<Segment> toSegments) {

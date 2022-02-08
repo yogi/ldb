@@ -180,9 +180,9 @@ public class Level {
                 List<Segment> toCompact = new ArrayList<>();
                 toCompact.add(picked);
                 final List<Segment> overlappingSegments = getOverlappingSegments(list, picked.getMinKey(), picked.getMaxKey());
-                LOG.info("adding {} overlapping segments to level0 for {}", overlappingSegments.size(), picked);
                 toCompact.addAll(overlappingSegments);
                 list = toCompact;
+                LOG.debug("adding {}/{} overlapping segments to level0 for {}", toCompact.size() - 1, overlappingSegments.size(), picked);
             } else {
                 Segment nextSegment = getNextSegmentToCompact(list);
                 if (nextSegment == null) return List.of();
