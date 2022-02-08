@@ -6,7 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import store.ldb.CompressionType;
 import store.ldb.Config;
-import store.ldb.LDB;
+import store.ldb.Ldb;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,9 +16,9 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class LDBTest {
+public class LdbTest {
     private final File basedir = new File("tmp/ldb");
-    private LDB store;
+    private Ldb store;
     private Config.ConfigBuilder defaultConfig;
 
     @BeforeEach
@@ -41,7 +41,7 @@ public class LDBTest {
     public void testMultipleSetsAndGets() {
         System.out.println("LDBTest.testMultipleSetsAndGets");
         final Config config = defaultConfig.withNumLevels(3).build();
-        store = new LDB(basedir.getPath(), config);
+        store = new Ldb(basedir.getPath(), config);
 
         final int max = 10;
         for (int i = 0; i < max; i++) {
@@ -69,13 +69,13 @@ public class LDBTest {
     @Test
     public void testBlockStorage() {
         System.out.println("LDBTest.testBlockStorage");
-        store = new LDB(basedir.getPath(), defaultConfig.build());
+        store = new Ldb(basedir.getPath(), defaultConfig.build());
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal1", "level0/seg0");
 
-        store = new LDB(basedir.getPath(), defaultConfig.build());
+        store = new Ldb(basedir.getPath(), defaultConfig.build());
 
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal2", "level0/seg0");
@@ -93,7 +93,7 @@ public class LDBTest {
                 .withNumLevels(2)
                 .withMaxBlockSize(1)
                 .build();
-        store = new LDB(basedir.getPath(), config);
+        store = new Ldb(basedir.getPath(), config);
 
         store.set("1", "a");
         store.set("1", "b");
@@ -121,7 +121,7 @@ public class LDBTest {
         final Config config = defaultConfig
                 .withNumLevels(3)
                 .build();
-        store = new LDB(basedir.getPath(), config);
+        store = new Ldb(basedir.getPath(), config);
 
         store.set("1", "a");
         store.set("1", "b");

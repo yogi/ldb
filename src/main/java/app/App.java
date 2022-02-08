@@ -5,17 +5,17 @@ import io.jooby.Jooby;
 import io.jooby.StatusCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import store.ldb.LDB;
+import store.ldb.Ldb;
 
 import java.util.Optional;
 
 public class App extends Jooby {
     public static final Logger LOG = LoggerFactory.getLogger(App.class);
-    private final LDB store;
+    private final Ldb store;
 
     {
         try {
-            store = new LDB("data/ldb");
+            store = new Ldb("data/ldb");
             store.startCompactor();
         } catch (Exception e) {
             throw new RuntimeException(e);

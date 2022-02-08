@@ -8,7 +8,7 @@ import okhttp3.Response;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.jupiter.api.Test;
-import store.ldb.LDB;
+import store.ldb.Ldb;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,7 +33,7 @@ public class IntegrationTest {
 
         File basedir = new File("tmp/ldb");
         if (basedir.exists()) FileUtils.deleteDirectory(basedir);
-        LDB store = new LDB(basedir.getPath());
+        Ldb store = new Ldb(basedir.getPath());
 
         BlockingQueue<String> queue = new LinkedBlockingDeque<>();
         new Thread(() -> {

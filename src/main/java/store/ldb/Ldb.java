@@ -14,8 +14,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static java.lang.String.format;
 
-public class LDB implements Store {
-    public static final Logger LOG = LoggerFactory.getLogger(LDB.class);
+public class Ldb implements Store {
+    public static final Logger LOG = LoggerFactory.getLogger(Ldb.class);
 
     private final String dir;
     private final TreeMap<Integer, Level> levels;
@@ -26,11 +26,11 @@ public class LDB implements Store {
     private volatile WriteAheadLog wal;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
-    public LDB(String dir) {
+    public Ldb(String dir) {
         this(dir, Config.defaultConfig());
     }
 
-    public LDB(String dir, Config config) {
+    public Ldb(String dir, Config config) {
         this.config = config;
         this.dir = dir;
         this.levels = Level.loadLevels(dir, config);
