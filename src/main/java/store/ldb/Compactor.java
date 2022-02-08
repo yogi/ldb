@@ -4,16 +4,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
+    public static final Comparator<LevelCompactor> LEVEL_SCORE_DESC_COMPARATOR = Comparator.comparing(LevelCompactor::getScore).reversed();
 
     private final Config config;
-    private final Thread compactorThread;
+    private final Thread compactionPrioritizerThread;
     private final List<LevelCompactor> levelCompactors = new ArrayList<>();
     private final AtomicBoolean stop = new AtomicBoolean();
+    private ExecutorService executorService;
 
     public Compactor(TreeMap<Integer, Level> levels, Config aConfig) {
         config = aConfig;
@@ -24,32 +28,41 @@ public class Compactor {
             LevelCompactor levelCompactor = new LevelCompactor(level, nextLevel, nextToNextLevel, config);
             levelCompactors.add(levelCompactor);
         }
-        compactorThread = new Thread(this::compact, "compactor");
+        compactionPrioritizerThread = new Thread(this::prioritize, "compaction-prio");
     }
 
     public void start() {
-        compactorThread.start();
+        final int nThreads = 5;
+        executorService = Executors.newFixedThreadPool(nThreads);
+        compactionPrioritizerThread.start();
     }
 
-    private void compact() {
-        LOG.info("compaction loop started");
+    private void prioritize() {
+        LOG.info("prioritizer started");
         while (!stop.get()) {
             if (stop.get()) break;
             try {
-                pickCompactor().ifPresent(LevelCompactor::runCompaction);
+                final Optional<LevelCompactor> lc = pickCompactor();
+                lc.ifPresent(levelCompactor -> {
+                    executorService.submit(levelCompactor::runCompaction);
+                });
                 sleepSilently();
             } catch (Exception e) {
                 LOG.error("caught exception in compact loop, ignoring and retrying", e);
             }
         }
-        LOG.info("compaction loop exited");
+        LOG.info("prioritizer exited");
     }
 
     private Optional<LevelCompactor> pickCompactor() {
-        final TreeSet<LevelCompactor> set = new TreeSet<>(Comparator.comparing(LevelCompactor::getScore));
-        set.addAll(levelCompactors);
-        final LevelCompactor picked = set.pollLast();
-        return Optional.ofNullable(picked);
+        TreeSet<Map.Entry<LevelCompactor, Double>> set = new TreeSet<>((o1, o2) -> (int) (o2.getValue() - o1.getValue()));
+        set.addAll(levelCompactors.stream().map(lc -> Map.entry(lc, lc.level.getCompactionScore())).collect(Collectors.toList()));
+        Map.Entry<LevelCompactor, Double> picked = set.pollFirst();
+        if (picked != null && picked.getValue() > 0) {
+            LOG.debug("picking highest: {}, rest: {}", picked, set);
+            return Optional.of(picked.getKey());
+        }
+        return Optional.empty();
     }
 
     public void runCompaction(int levelNum) {
@@ -59,6 +72,7 @@ public class Compactor {
     public void stop() {
         LOG.debug("stop");
         stop.set(true);
+        if (executorService != null) executorService.shutdown();
     }
 
 
@@ -78,7 +92,7 @@ public class Compactor {
 
         @Override
         public String toString() {
-            return level + ", score " + level.getCompactionScore() + "]";
+            return level.dirPathName();
         }
 
         public LevelCompactor(Level level, Level nextLevel, Level nextToNextLevel, Config config) {

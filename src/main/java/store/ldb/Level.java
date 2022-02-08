@@ -29,7 +29,6 @@ public class Level {
     private final Comparator<Segment> segmentComparator;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private String maxCompactedKey;
-    private double compactionScore;
 
     public Level(String dirName, int num, Comparator<Segment> segmentComparator, Config config) {
         this.config = config;
@@ -40,7 +39,6 @@ public class Level {
         this.segments = new TreeSet<>(segmentComparator);
         Segment.loadAll(dir, config).forEach(this::addSegment);
         nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
-        recalculateCompactionScore();
         segments.forEach(segment -> LOG.info("level {} segment {}", num, segment));
     }
 
@@ -77,7 +75,6 @@ public class Level {
             if (!segments.add(segment)) {
                 throw new IllegalStateException(format("segment %s was not added to level %s\n", segment.fileName, dirPathName()));
             }
-            recalculateCompactionScore();
         } finally {
             lock.writeLock().unlock();
         }
@@ -156,7 +153,6 @@ public class Level {
                 throw new IllegalStateException("could not remove segment: " + segment);
             }
             segment.delete();
-            recalculateCompactionScore();
         } finally {
             lock.writeLock().unlock();
         }
@@ -265,20 +261,30 @@ public class Level {
         }
     }
 
-    private void recalculateCompactionScore() {
-        final double score = num == 0 ?
-                segments.size() / 4.0 :
-                totalBytes() / maxBytes();
-        compactionScore = Math.round(score * 1000.0) / 1000.0;
-    }
-
     private double maxBytes() {
         assertLevelIsKeySorted(); // does not apply for level0
         return 10 * Config.MB * Math.pow(10, num);
     }
 
     public double getCompactionScore() {
-        return compactionScore;
+        lock.readLock().lock();
+        try {
+            final List<Segment> notBeingCompacted = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
+            if (num == 0) {
+                return roundTo(notBeingCompacted.size() / 4, 3);
+            } else {
+                double totalBytes = notBeingCompacted.stream().mapToLong(Segment::totalBytes).sum();
+                final double score = totalBytes / maxBytes();
+                return roundTo(score, 3);
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private double roundTo(double score, int digits) {
+        final double factor = Math.pow(10.0, digits);
+        return Math.round((score * factor) / factor);
     }
 }
 
