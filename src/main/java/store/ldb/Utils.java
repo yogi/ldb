@@ -9,7 +9,7 @@ public class Utils {
 
     public static double roundTo(double score, int digits) {
         final double factor = Math.pow(10.0, digits);
-        return Math.round((score * factor) / factor);
+        return ((long) (score * factor)) / factor;
     }
 
 }
