@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 
 import static java.lang.String.format;
 import static store.ldb.StringUtils.*;
+import static store.ldb.Utils.roundTo;
 
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
@@ -282,9 +283,5 @@ public class Level {
         }
     }
 
-    private double roundTo(double score, int digits) {
-        final double factor = Math.pow(10.0, digits);
-        return Math.round((score * factor) / factor);
-    }
 }
 

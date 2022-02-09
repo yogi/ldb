@@ -1,3 +1,4 @@
+package store.ldb;
 
 public class Utils {
     public static void requireTrue(boolean bool) {
@@ -5,4 +6,10 @@ public class Utils {
             throw new IllegalStateException("should be true");
         }
     }
+
+    public static double roundTo(double score, int digits) {
+        final double factor = Math.pow(10.0, digits);
+        return Math.round((score * factor) / factor);
+    }
+
 }

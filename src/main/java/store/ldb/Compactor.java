@@ -55,11 +55,13 @@ public class Compactor {
     }
 
     private Optional<LevelCompactor> pickCompactor() {
-        TreeSet<Map.Entry<LevelCompactor, Double>> set = new TreeSet<>((o1, o2) -> (int) (o2.getValue() - o1.getValue()));
+        TreeSet<Map.Entry<LevelCompactor, Double>> set = new TreeSet<>((e1, e2) -> {
+            final double v = e2.getValue() - e1.getValue();
+            return (int) (v == 0 ? e1.getKey().level.getNum() - e2.getKey().level.getNum() : v);
+        });
         set.addAll(levelCompactors.stream().map(lc -> Map.entry(lc, lc.level.getCompactionScore())).collect(Collectors.toList()));
         Map.Entry<LevelCompactor, Double> picked = set.pollFirst();
         if (picked != null && picked.getValue() > 0) {
-            LOG.debug("picking highest: {}, rest: {}", picked, set);
             return Optional.of(picked.getKey());
         }
         return Optional.empty();
