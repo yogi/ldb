@@ -263,7 +263,7 @@ public class Level {
 
     private double maxBytes() {
         assertLevelIsKeySorted(); // does not apply for level0
-        return 10 * Config.MB * Math.pow(10, num);
+        return Math.pow(10, num) * Config.MB;
     }
 
     public double getCompactionScore() {
@@ -271,7 +271,7 @@ public class Level {
         try {
             final List<Segment> notBeingCompacted = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
             if (num == 0) {
-                return roundTo(notBeingCompacted.size() / 4, 3);
+                return roundTo(notBeingCompacted.size() / 4.0, 3);
             } else {
                 double totalBytes = notBeingCompacted.stream().mapToLong(Segment::totalBytes).sum();
                 final double score = totalBytes / maxBytes();
