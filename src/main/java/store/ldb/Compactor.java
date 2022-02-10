@@ -11,7 +11,6 @@ import java.util.stream.Collectors;
 
 public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
-    public static final Comparator<LevelCompactor> LEVEL_SCORE_DESC_COMPARATOR = Comparator.comparing(LevelCompactor::getScore).reversed();
 
     private final Config config;
     private final Thread compactionPrioritizerThread;
@@ -32,7 +31,7 @@ public class Compactor {
     }
 
     public void start() {
-        final int nThreads = 5;
+        final int nThreads = 4;
         executorService = Executors.newFixedThreadPool(nThreads);
         compactionPrioritizerThread.start();
     }
@@ -55,14 +54,14 @@ public class Compactor {
     }
 
     private Optional<LevelCompactor> pickCompactor() {
-        TreeSet<Map.Entry<LevelCompactor, Double>> set = new TreeSet<>((e1, e2) -> {
-            final double v = e2.getValue() - e1.getValue();  // higher score first
-            return (int) (v == 0 ? e1.getKey().level.getNum() - e2.getKey().level.getNum() : v); // after that lower level num
-        });
-        set.addAll(levelCompactors.stream().map(lc -> Map.entry(lc, lc.level.getCompactionScore())).collect(Collectors.toList()));
-        Map.Entry<LevelCompactor, Double> picked = set.pollFirst();
+        List<Map.Entry<LevelCompactor, Double>> list = levelCompactors.stream()
+                .map(lc -> Map.entry(lc, lc.level.getCompactionScore()))
+                .sorted(((Comparator<Map.Entry<LevelCompactor, Double>>) (o1, o2) -> Double.compare(o2.getValue(), o1.getValue()))
+                        .thenComparing(e -> e.getKey().level.getNum()))
+                .collect(Collectors.toList());
+        Map.Entry<LevelCompactor, Double> picked = list.get(0);
         if (picked != null && picked.getValue() > 0) {
-            LOG.debug("picking first comparator {} from - {}", picked, set);
+            LOG.debug("picked {} from {}", picked, list);
             return Optional.of(picked.getKey());
         }
         return Optional.empty();

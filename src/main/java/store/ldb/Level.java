@@ -177,7 +177,7 @@ public class Level {
                 List<Segment> toCompact = new ArrayList<>();
                 toCompact.add(picked);
                 final List<Segment> overlappingSegments = getOverlappingSegments(list, picked.getMinKey(), picked.getMaxKey());
-                toCompact.addAll(overlappingSegments);
+                toCompact.addAll(overlappingSegments.subList(0, Math.min(overlappingSegments.size(), 10)));
                 list = toCompact;
                 LOG.debug("adding {}/{} overlapping segments to level0 for {}", toCompact.size() - 1, overlappingSegments.size(), picked);
             } else {
