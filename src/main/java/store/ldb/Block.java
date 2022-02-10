@@ -102,11 +102,8 @@ class Block {
     }
 
     private byte[] uncompress() throws IOException {
-        try (InputStream f = new BufferedInputStream(new FileInputStream(filename))) {
-            long skippedTo = f.skip(offset);
-            if (skippedTo != offset) {
-                throw new IllegalStateException(format("skipped to %d instead of offset %d when trying to read block for segment %s", skippedTo, offset, filename));
-            }
+        try (RandomAccessFile f = new RandomAccessFile(filename, "r")) {
+            f.seek(offset);
             byte[] bytes = new byte[length];
             final int read = f.read(bytes);
             if (read != length) {
