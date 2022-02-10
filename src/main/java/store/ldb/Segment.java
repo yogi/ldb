@@ -112,12 +112,12 @@ public class Segment {
         public void write(KeyValueEntry entry) {
             assertNotReady();
 
-            LOG.trace("write key {} to block-writer for {}", entry.key, Segment.this);
+            LOG.trace("write key {} to block-writer for {}", entry.getKey(), Segment.this);
 
             if (blocks == null) {
                 blocks = new ArrayList<>();
                 startTime = System.currentTimeMillis();
-                minKey = entry.key;
+                minKey = entry.getKey();
                 keyCount = 0;
             }
 
@@ -126,9 +126,9 @@ public class Segment {
             }
 
             blockWriter.addEntry(entry);
-            maxKey = entry.key;
+            maxKey = entry.getKey();
             keyCount += 1;
-            LOG.trace("added key {} to block-writer for {}", entry.key, Segment.this);
+            LOG.trace("added key {} to block-writer for {}", entry.getKey(), Segment.this);
 
             if (blockWriter.isFull(config.maxBlockSize)) {
                 flushBlockWriter();

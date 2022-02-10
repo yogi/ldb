@@ -111,7 +111,7 @@ public class WriteAheadLog {
         try (DataInputStream is = new DataInputStream(new BufferedInputStream(new FileInputStream(walFileName())))) {
             while (is.available() > 0) {
                 KeyValueEntry entry = KeyValueEntry.readFrom(is);
-                memtable.put(entry.key, entry.value);
+                memtable.put(entry.getKey(), entry.getValue());
                 count += 1;
                 if (count % 100000 == 0) {
                     LOG.debug("replayed from wal: {}", count);

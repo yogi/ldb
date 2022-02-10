@@ -5,17 +5,26 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static java.lang.String.format;
+
 public class KeyValueEntry {
     public static final int MAX_KEY_SIZE = Short.MAX_VALUE;
     public static final int MAX_VALUE_SIZE = Short.MAX_VALUE;
     public static final int FLUSH_INTERVAL = 0;
 
     final byte metadata;
-    final String key;
-    final String value;
+    private final String key;
+    private byte[] valBytes;
+    private String value;
     private static long lastFlushTime;
     private static final AtomicLong recordsWritten = new AtomicLong();
     private static final AtomicLong flushCount = new AtomicLong();
+
+    public KeyValueEntry(byte metadata, String key, byte[] valBytes) {
+        this.metadata = metadata;
+        this.key = key;
+        this.valBytes = valBytes;
+    }
 
     public int valueOffset() {
         final int metadataLen = 1;
@@ -25,7 +34,7 @@ public class KeyValueEntry {
     }
 
     public int totalBytes() {
-        return valueOffset() + value.length();
+        return valueOffset() + getValue().length();
     }
 
     public static KeyValueEntry readFrom(DataInputStream is) throws IOException {
@@ -35,9 +44,13 @@ public class KeyValueEntry {
         String key = new String(is.readNBytes(keyLen));
 
         short valLen = is.readShort();
-        String val = new String(is.readNBytes(valLen));
+        byte[] valBytes = new byte[valLen];
+        final int read = is.read(valBytes);
+        if (read != valLen) {
+            throw new IOException(format("read %d bytes vs expected %d for KeyValueEntry", read, valLen));
+        }
 
-        return new KeyValueEntry(metadata, key, val);
+        return new KeyValueEntry(metadata, key, valBytes);
     }
 
     public KeyValueEntry(byte metadata, String key, String value) {
@@ -52,8 +65,8 @@ public class KeyValueEntry {
         os.writeShort(key.length());
         os.write(key.getBytes());
 
-        os.writeShort(value.length());
-        os.write(value.getBytes());
+        os.writeShort(valBytes != null ? valBytes.length : value.length());
+        os.write(valBytes != null ? valBytes : value.getBytes());
 
         recordsWritten.incrementAndGet();
 
@@ -67,6 +80,15 @@ public class KeyValueEntry {
             //    fos.getFD().sync();
             // }
         }
+    }
+
+    public String getKey() {
+        return key;
+    }
+
+    public String getValue() {
+        if (value == null) value = new String(valBytes);
+        return value;
     }
 
     public static long getRecordsWritten() {

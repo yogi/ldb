@@ -20,7 +20,7 @@ class BlockWriter {
             byte[] data = compress(entries);
             os.write(data);
             os.flush();
-            return new Block(entries.get(0).key, offset, data.length, config.compressionType, fileName);
+            return new Block(entries.get(0).getKey(), offset, data.length, config.compressionType, fileName);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

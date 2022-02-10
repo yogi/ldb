@@ -19,7 +19,7 @@ public class Config {
                 withCompressionType(CompressionType.SNAPPY).
                 withMaxSegmentSize(2 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
-                withNumLevels(5).
+                withNumLevels(3).
                 withMaxBlockSize(100 * KB).
                 withMaxWalSize(10 * MB). // 10 mb is great!
                 withSleepBetweenCompactionsMs(100).

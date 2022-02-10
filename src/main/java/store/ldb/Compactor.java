@@ -84,14 +84,17 @@ public class Compactor {
                 .collect(Collectors.toList());
         Map.Entry<LevelCompactor, Double> picked = list.get(0);
         if (picked != null && picked.getValue() > 0) {
-            LOG.debug("picked {} from {}", picked, list);
+            //LOG.debug("picked {} from {}", picked, list);
             return Optional.of(picked.getKey());
         }
         return Optional.empty();
     }
 
     public void runCompaction(int levelNum) {
-        levelCompactors.get(levelNum).runCompaction();
+        LevelCompactor compactor = levelNum == 0 ?
+                levelZeroCompactor :
+                levelCompactors.get(levelNum - 1);
+        compactor.runCompaction();
     }
 
     public void stop() {
@@ -176,11 +179,11 @@ public class Compactor {
                     if (segment == null) {
                         segment = toLevel.createNextSegment();
                         writer = segment.getWriter();
-                        minKey = entry.key;
+                        minKey = entry.getKey();
                     }
 
                     writer.write(entry);
-                    maxKey = entry.key;
+                    maxKey = entry.getKey();
                     if (writer.isFull(config.maxSegmentSize) || crossedOverlappingSegmentsThresholdOfNextToNextLevel(minKey, maxKey)) {
                         writer.done();
                         toLevel.addSegment(segment);
@@ -190,7 +193,7 @@ public class Compactor {
 
                     PriorityQueue<SegmentScanner> nextScanners = new PriorityQueue<>();
                     while ((scanner = scanners.poll()) != null) {
-                        scanner.moveToNextIfEquals(entry.key);
+                        scanner.moveToNextIfEquals(entry.getKey());
                         if (scanner.hasNext()) {
                             nextScanners.add(scanner);
                         }
@@ -229,7 +232,7 @@ public class Compactor {
 
             @Override
             public int compareTo(SegmentScanner other) {
-                int result = peek().key.compareTo(other.peek().key);
+                int result = peek().getKey().compareTo(other.peek().getKey());
                 if (result != 0) {
                     return result;
                 }
@@ -245,7 +248,7 @@ public class Compactor {
             }
 
             public void moveToNextIfEquals(String key) {
-                if (key.equals(next.key)) {
+                if (key.equals(next.getKey())) {
                     next = iterator.hasNext() ?
                             iterator.next() :
                             null;
@@ -256,7 +259,7 @@ public class Compactor {
             public String toString() {
                 return "SegmentScanner{" +
                         "segment=" + segment.num +
-                        ", next=" + (next == null ? "null" : next.key) +
+                        ", next=" + (next == null ? "null" : next.getKey()) +
                         '}';
             }
         }

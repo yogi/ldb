@@ -1,10 +1,12 @@
 counter = 0
+math.randomseed(os.time())
 
 request = function()
     wrk.method = "GET"
     counter = (counter + 1)
     count = tostring(counter)
-    probeId = "PRB" .. count
+    pid = math.random(1, 100000)
+    probeId = "PRB" .. pid
     path = "/probe/" .. probeId .. "/latest"
     --io.write(string.format("probe %s %d\n", probeId, counter))
     return wrk.format(nil, path)

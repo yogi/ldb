@@ -1,10 +1,10 @@
-package app;
+package misc;
 
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class FilePerf {
+public class FileStringPerf {
     private static final int ITERATIONS = 5;
     private static final double MEG = (Math.pow(1024, 2));
     private static final int RECORD_COUNT = 4000000;

@@ -12,17 +12,6 @@ import static java.lang.String.format;
 class Block {
     final int offset;
     final int length;
-
-    @Override
-    public String toString() {
-        return "Block{" +
-                "offset=" + offset +
-                ", length=" + length +
-                ", startKey='" + startKey + '\'' +
-                ", compressionType=" + compressionType +
-                '}';
-    }
-
     final String startKey;
     private final CompressionType compressionType;
     private final String filename;
@@ -87,11 +76,11 @@ class Block {
     }
 
     public Optional<String> get(String key) {
-        try (DataInputStream is = new DataInputStream(new ByteArrayInputStream(uncompress()))) {
+        try (DataInputStream is = new DataInputStream(new BufferedInputStream(new ByteArrayInputStream(uncompress())))) {
             while (is.available() > 0) {
                 final KeyValueEntry entry = KeyValueEntry.readFrom(is);
-                if (key.equals(entry.key)) {
-                    return Optional.of(entry.value);
+                if (key.equals(entry.getKey())) {
+                    return Optional.of(entry.getValue());
                 }
             }
             return Optional.empty();
@@ -113,12 +102,28 @@ class Block {
     }
 
     private byte[] uncompress() throws IOException {
-        try (FileInputStream f = new FileInputStream(filename)) {
+        try (InputStream f = new BufferedInputStream(new FileInputStream(filename))) {
             long skippedTo = f.skip(offset);
             if (skippedTo != offset) {
                 throw new IllegalStateException(format("skipped to %d instead of offset %d when trying to read block for segment %s", skippedTo, offset, filename));
             }
-            return compressionType.uncompress(f.readNBytes(length));
+            byte[] bytes = new byte[length];
+            final int read = f.read(bytes);
+            if (read != length) {
+                throw new IOException(format("read %d bytes vs expected %d for block", read, length));
+            }
+            return compressionType.uncompress(bytes);
         }
     }
+
+    @Override
+    public String toString() {
+        return "Block{" +
+                "offset=" + offset +
+                ", length=" + length +
+                ", startKey='" + startKey + '\'' +
+                ", compressionType=" + compressionType +
+                '}';
+    }
+
 }
