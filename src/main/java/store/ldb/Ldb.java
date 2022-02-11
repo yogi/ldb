@@ -27,7 +27,7 @@ public class Ldb implements Store {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public Ldb(String dir) {
-        this(dir, Config.defaultConfig());
+        this(dir, Config.defaultConfig().build());
     }
 
     public Ldb(String dir, Config config) {
@@ -84,24 +84,33 @@ public class Ldb implements Store {
     }
 
     private void writeSegmentIfNeeded() {
-        if (walThresholdCrossed(wal) && !writeSegmentInProgress.get()) {
-            writeSegmentInProgress.set(true);
+        if (walThresholdCrossed(wal)) {
+            flushMemtable();
+        }
+    }
 
-            WriteAheadLog oldWal = wal;
-            TreeMap<String, String> oldMemtable = memtable;
+    /**
+     * Package access only for tests, should not be called without a lock
+     */
+    void flushMemtable() {
+        if (writeSegmentInProgress.get()) return;
 
-            LOG.debug("wal threshold crossed, init new wal and memtable before flushing old one {}", oldWal);
-            wal = WriteAheadLog.startNext();
-            memtable = new TreeMap<>();
+        writeSegmentInProgress.set(true);
 
-            LOG.debug("flush segment from memtable for wal {}", oldWal);
-            try {
-                oldWal.stop();
-                levels.get(0).flushMemtable(oldMemtable);
-                oldWal.delete();
-            } finally {
-                writeSegmentInProgress.set(false);
-            }
+        WriteAheadLog oldWal = wal;
+        TreeMap<String, String> oldMemtable = memtable;
+
+        LOG.debug("wal threshold crossed, init new wal and memtable before flushing old one {}", oldWal);
+        wal = WriteAheadLog.startNext();
+        memtable = new TreeMap<>();
+
+        LOG.debug("flush segment from memtable for wal {}", oldWal);
+        try {
+            oldWal.stop();
+            levels.get(0).flushMemtable(oldMemtable);
+            oldWal.delete();
+        } finally {
+            writeSegmentInProgress.set(false);
         }
     }
 
@@ -135,10 +144,10 @@ public class Ldb implements Store {
         assertSize(key, KeyValueEntry.MAX_VALUE_SIZE, "value");
     }
 
-    private void assertSize(String s, int maxSize, String key_or_value) {
-        if (s.getBytes().length > maxSize) {
+    private void assertSize(String s, int maxSize, String keyOrValue) {
+        if (s.length() > maxSize) {
             throw new IllegalArgumentException(format("max %s size supported %d bytes, got %d bytes: %s",
-                    key_or_value, maxSize, s.getBytes().length, s));
+                    keyOrValue, maxSize, s.getBytes().length, s));
         }
     }
 

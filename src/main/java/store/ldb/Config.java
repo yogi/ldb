@@ -14,16 +14,15 @@ public class Config {
     public final int maxWalSize;
     public final long sleepBetweenCompactionsMs;
 
-    public static Config defaultConfig() {
+    public static ConfigBuilder defaultConfig() {
         return builder().
-                withCompressionType(CompressionType.SNAPPY).
+                withCompressionType(CompressionType.LZ4).
                 withMaxSegmentSize(2 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
-                withNumLevels(3).
+                withNumLevels(4).
                 withMaxBlockSize(100 * KB).
-                withMaxWalSize(10 * MB). // 10 mb is great!
-                withSleepBetweenCompactionsMs(100).
-                build();
+                withMaxWalSize(10 * MB).
+                withSleepBetweenCompactionsMs(100);
     }
 
     public Config(CompressionType compressionType, int maxSegmentSize, Function<Level, Integer> levelCompactionThreshold, int numLevels, int maxBlockSize, int maxWalSize, long sleepBetweenCompactionsMs) {

@@ -119,7 +119,7 @@ public class WriteAheadLog {
             }
             LOG.debug("replayed from wal: {} keys, store-size: {}, in {} ms", count, memtable.size(), (System.currentTimeMillis() - start));
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            LOG.info("ignoring error replaying wal on startup: " + e.getMessage());
         }
     }
 

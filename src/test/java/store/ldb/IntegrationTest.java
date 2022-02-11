@@ -1,4 +1,4 @@
-package app;
+package store.ldb;
 
 import io.jooby.StatusCode;
 import kotlin.ranges.IntRange;
@@ -8,7 +8,6 @@ import okhttp3.Response;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.jupiter.api.Test;
-import store.ldb.Ldb;
 
 import java.io.File;
 import java.io.IOException;
@@ -17,6 +16,7 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.lang.String.format;
@@ -49,6 +49,7 @@ public class IntegrationTest {
 
         Thread.sleep(500);
 
+        AtomicBoolean fail = new AtomicBoolean();
         AtomicInteger counter = new AtomicInteger(1);
         List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < MAX_READER_THREADS; i++) {
@@ -69,7 +70,7 @@ public class IntegrationTest {
             });
             thread.setUncaughtExceptionHandler((t, e) -> {
                 System.out.println("caught exception in thread = " + e);
-                fail();
+                fail.set(true);
             });
             threads.add(thread);
             thread.start();
@@ -77,6 +78,7 @@ public class IntegrationTest {
         for (Thread thread : threads) {
             thread.join();
         }
+        assertFalse(fail.get());
     }
 
     @Test

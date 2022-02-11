@@ -1,6 +1,8 @@
 package app;
 
+import net.jpountz.lz4.LZ4Factory;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,6 +12,7 @@ import store.ldb.Ldb;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -25,7 +28,7 @@ public class LdbTest {
     void setUp() throws IOException {
         deleteDataDir();
         defaultConfig = new Config.ConfigBuilder()
-                .withCompressionType(CompressionType.NONE)
+                .withCompressionType(CompressionType.LZ4)
                 .withLevelCompactionThreshold((level) -> 1)
                 .withNumLevels(1)
                 .withMaxBlockSize(100)
@@ -35,6 +38,19 @@ public class LdbTest {
     @AfterEach
     void tearDown() {
         if (store != null) store.stop();
+    }
+
+    @Test
+    public void testLZ4() throws UnsupportedEncodingException {
+        String s = RandomStringUtils.randomAlphabetic(1000);
+        byte[] data = s.getBytes("UTF-8");
+        final int origLength = data.length;
+        System.out.println("origLength = " + origLength);
+
+        final byte[] compressed = CompressionType.LZ4.compress(s.getBytes());
+        final byte[] uncompressed = CompressionType.LZ4.uncompress(compressed);
+
+        assertEquals(s, new String(uncompressed));
     }
 
     @Test

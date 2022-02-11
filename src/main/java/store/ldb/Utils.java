@@ -12,4 +12,7 @@ public class Utils {
         return ((long) (score * factor)) / factor;
     }
 
+    public static void shouldNotGetHere(String s) {
+        throw new IllegalStateException(s);
+    }
 }
