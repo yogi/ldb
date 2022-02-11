@@ -142,23 +142,26 @@ public class Compactor {
             List<Segment> toBeCompacted = addLists(fromSegments, overlappingSegments);
             if (toBeCompacted.isEmpty()) return;
 
+            CompactionStatistics stats = new CompactionStatistics();
             long start = System.currentTimeMillis();
             if (toBeCompacted.size() == 1) {
-                copySegment(toBeCompacted.get(0), nextLevel);
+                copySegment(toBeCompacted.get(0), nextLevel, stats);
             } else {
-                compactSegments(toBeCompacted, nextLevel);
+                compactSegments(toBeCompacted, nextLevel, stats);
             }
             fromSegments.forEach(level::removeSegment);
             overlappingSegments.forEach(nextLevel::removeSegment);
             final long timeTaken = System.currentTimeMillis() - start;
-            LOG.debug("compacted {} - {} segments in {} ms - minKey {}, maxKey {}",
-                    level, toBeCompacted.size(), timeTaken, minKey, maxKey);
+            LOG.debug("compacted {} - {} segments in {} ms - minKey {}, maxKey {}, newSegments {}, totalBytesWritten {}KB",
+                    level, toBeCompacted.size(), timeTaken, minKey, maxKey, stats.newSegments, Utils.roundTo(stats.totalBytesWritten / 1024.0, 2));
         }
 
-        private void copySegment(Segment segment, Level nextLevel) {
+        private void copySegment(Segment segment, Level nextLevel, CompactionStatistics stats) {
             final Segment newSegment = nextLevel.createNextSegment();
             newSegment.copyFrom(segment);
             nextLevel.addSegment(newSegment);
+            stats.incrNewSegments();
+            stats.incrTotalBytesWritten(segment.totalBytes());
         }
 
         private List<Segment> addLists(List<Segment> fromSegments, List<Segment> toSegments) {
@@ -168,7 +171,7 @@ public class Compactor {
             return result;
         }
 
-        public void compactSegments(List<Segment> segments, Level toLevel) {
+        public void compactSegments(List<Segment> segments, Level toLevel, CompactionStatistics stats) {
             Segment segment = null;
             Segment.SegmentWriter writer = null;
             String minKey = null;
@@ -197,6 +200,8 @@ public class Compactor {
                     if (writer.isFull(config.maxSegmentSize) || crossedOverlappingSegmentsThresholdOfNextToNextLevel(minKey, maxKey)) {
                         writer.done();
                         toLevel.addSegment(segment);
+                        stats.incrNewSegments();
+                        stats.incrTotalBytesWritten(segment.totalBytes());
                         segment = null;
                         writer = null;
                     }
@@ -215,6 +220,8 @@ public class Compactor {
             if (segment != null) {
                 writer.done();
                 toLevel.addSegment(segment);
+                stats.incrNewSegments();
+                stats.incrTotalBytesWritten(segment.totalBytes());
             }
         }
 
@@ -267,5 +274,18 @@ public class Compactor {
             }
         }
 
+    }
+
+    static class CompactionStatistics {
+        int newSegments;
+        long totalBytesWritten;
+
+        public void incrNewSegments() {
+            newSegments++;
+        }
+
+        public void incrTotalBytesWritten(long bytes) {
+            totalBytesWritten += bytes;
+        }
     }
 }

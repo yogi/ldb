@@ -4,13 +4,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import store.Store;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 
 import static java.lang.String.format;
 
@@ -119,17 +117,15 @@ public class Ldb implements Store {
     }
 
     @Override
-    public Map<String, Object> stats() {
-        Map<String, Object> stats = new HashMap<>();
+    public String stats() {
+        Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("memtable.size", memtable.size());
         stats.put("db.keys", levels.values().stream().mapToLong(Level::keyCount).sum());
         stats.put("db.totalBytes", levels.values().stream().mapToLong(Level::totalBytes).sum());
         levels.values().forEach(level -> {
-            stats.put(level.dirPathName() + ".segments", level.segmentCount());
-            stats.put(level.dirPathName() + ".keyCount", level.keyCount());
-            stats.put(level.dirPathName() + ".totalBytes", level.totalBytes());
+            level.addStats(stats);
         });
-        return stats;
+        return stats.entrySet().stream().map(Object::toString).collect(Collectors.joining("\n"));
     }
 
     public void runCompaction(int levelNum) {

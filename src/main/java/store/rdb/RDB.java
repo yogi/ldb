@@ -84,10 +84,10 @@ public class RDB implements store.Store {
     }
 
     @Override
-    public Map<String, Object> stats() {
-        Map<String, Object> stats = new HashMap<>();
+    public String stats() {
+        Map<String, Object> stats = new TreeMap<>();
         stats.put("memtable-entries", memtable.size());
-        return stats;
+        return Arrays.toString(stats.entrySet().toArray());
     }
 
     private synchronized void snapshot() {

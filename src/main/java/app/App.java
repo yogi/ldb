@@ -26,10 +26,6 @@ public class App extends Jooby {
         get("/probe/{probeId}/latest", this::getLatestEvent);
 
         get("/stats", this::stats);
-
-        onStarted(() -> {
-            LOG.info("stats: {}", store.stats());
-        });
     }
 
     private Object stats(Context context) {

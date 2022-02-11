@@ -25,7 +25,7 @@ public class Level {
     private final File dir;
     private final int num;
     private final Config config;
-    private final TreeSet<Segment> segments;
+    final TreeSet<Segment> segments;
     private final AtomicInteger nextSegmentNumber;
     private final Comparator<Segment> segmentComparator;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -285,5 +285,13 @@ public class Level {
         }
     }
 
+    public void addStats(Map<String, Object> stats) {
+        stats.put(dirPathName() + ".segments", segmentCount());
+        stats.put(dirPathName() + ".keyCount", keyCount());
+        stats.put(dirPathName() + ".totalBytes", totalBytes());
+        segments.forEach(segment -> {
+            stats.put(segment.fileName, segment);
+        });
+    }
 }
 
