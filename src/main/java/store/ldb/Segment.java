@@ -1,5 +1,6 @@
 package store.ldb;
 
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -93,6 +94,15 @@ public class Segment {
     boolean overlaps(String minKey, String maxKey) {
         return !(isLessThan(getMaxKey(), minKey)
                 || isGreaterThan(getMinKey(), maxKey));
+    }
+
+    public void copyFrom(Segment segment) {
+        try {
+            FileUtils.copyFile(new File(segment.fileName), new File(this.fileName));
+            load();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     class SegmentWriter {
@@ -242,7 +252,7 @@ public class Segment {
     public String toString() {
         return metadata == null ?
                 format("[Segment %s]", fileName) :
-                format("[Segment %s min:%s max:%s]", fileName, getMinKey(), getMaxKey());
+                format("[Segment %s min:%s max:%s, #keys:%d]", fileName, getMinKey(), getMaxKey(), keyCount());
     }
 
 }

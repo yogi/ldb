@@ -143,12 +143,22 @@ public class Compactor {
             if (toBeCompacted.isEmpty()) return;
 
             long start = System.currentTimeMillis();
-            compactSegments(toBeCompacted, nextLevel);
+            if (toBeCompacted.size() == 1) {
+                copySegment(toBeCompacted.get(0), nextLevel);
+            } else {
+                compactSegments(toBeCompacted, nextLevel);
+            }
             fromSegments.forEach(level::removeSegment);
             overlappingSegments.forEach(nextLevel::removeSegment);
             final long timeTaken = System.currentTimeMillis() - start;
             LOG.debug("compacted {} - {} segments in {} ms - minKey {}, maxKey {}",
                     level, toBeCompacted.size(), timeTaken, minKey, maxKey);
+        }
+
+        private void copySegment(Segment segment, Level nextLevel) {
+            final Segment newSegment = nextLevel.createNextSegment();
+            newSegment.copyFrom(segment);
+            nextLevel.addSegment(newSegment);
         }
 
         private List<Segment> addLists(List<Segment> fromSegments, List<Segment> toSegments) {

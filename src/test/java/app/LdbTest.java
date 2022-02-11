@@ -45,7 +45,6 @@ public class LdbTest {
         String s = RandomStringUtils.randomAlphabetic(1000);
         byte[] data = s.getBytes("UTF-8");
         final int origLength = data.length;
-        System.out.println("origLength = " + origLength);
 
         final byte[] compressed = CompressionType.LZ4.compress(s.getBytes());
         final byte[] uncompressed = CompressionType.LZ4.uncompress(compressed);
@@ -55,7 +54,6 @@ public class LdbTest {
 
     @Test
     public void testMultipleSetsAndGets() {
-        System.out.println("LDBTest.testMultipleSetsAndGets");
         final Config config = defaultConfig.withNumLevels(3).build();
         store = new Ldb(basedir.getPath(), config);
 
@@ -84,7 +82,6 @@ public class LdbTest {
 
     @Test
     public void testBlockStorage() {
-        System.out.println("LDBTest.testBlockStorage");
         store = new Ldb(basedir.getPath(), defaultConfig.build());
 
         store.set("1", "a");
@@ -102,8 +99,25 @@ public class LdbTest {
     }
 
     @Test
+    public void testPromoteSegment() {
+        final Config config = defaultConfig
+                .withLevelCompactionThreshold((level) -> 1)
+                .withNumLevels(2)
+                .withMaxBlockSize(1)
+                .build();
+        store = new Ldb(basedir.getPath(), config);
+
+        store.set("1", "a");
+        assertEquals("a", store.get("1").orElseThrow());
+        assertFiles("wal1", "level0/seg0");
+
+        store.runCompaction(0);
+        assertEquals("a", store.get("1").orElseThrow());
+        assertFiles("wal1", "level1/seg0"); // no compactions below limit of 4 for level-0
+    }
+
+    @Test
     public void testLevelZeroCompactionsHappenFromOldestToNewest() {
-        System.out.println("LDBTest.testLevelZeroCompactionsHappenFromOldestToNewest");
         final Config config = defaultConfig
                 .withLevelCompactionThreshold((level) -> 4)
                 .withNumLevels(2)
@@ -133,7 +147,6 @@ public class LdbTest {
 
     @Test
     public void testThreeLevelOverlappingCompactions() {
-        System.out.println("LDBTest.testThreeLevelOverlappingCompactions");
         final Config config = defaultConfig
                 .withNumLevels(3)
                 .build();
