@@ -227,19 +227,21 @@ public class Level {
         assertLevelIsKeySorted();
         lock.readLock().lock();
         try {
-            return (int) getOverlappingSegments(new ArrayList<>(this.segments), minKey, maxKey).stream()
-                    .filter(segment -> !segment.isMarkedForCompaction())
-                    .count();
+            int count = 0;
+            for (Segment segment : this.segments) {
+                if (segment.overlaps(minKey, maxKey) && !segment.isMarkedForCompaction()) {
+                    count++;
+                }
+            }
+            return count;
         } finally {
             lock.readLock().unlock();
         }
     }
 
-    private List<Segment> getOverlappingSegments(List<Segment> list, String minKey, String maxKey) {
+    private List<Segment> getOverlappingSegments(Collection<Segment> list, String minKey, String maxKey) {
         return list.stream()
-                .filter(segment -> isWithinRange(segment.getMinKey(), minKey, maxKey)
-                        || isWithinRange(segment.getMaxKey(), minKey, maxKey)
-                        || (isLessThanOrEqual(segment.getMinKey(), minKey) && isGreaterThanOrEqual(segment.getMaxKey(), maxKey)))
+                .filter(segment -> segment.overlaps(minKey, maxKey))
                 .collect(Collectors.toList());
     }
 

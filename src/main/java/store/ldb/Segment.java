@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
-import static store.ldb.StringUtils.isGreaterThanOrEqual;
+import static store.ldb.StringUtils.*;
 
 public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
@@ -86,8 +86,13 @@ public class Segment {
         return markedForCompaction.get();
     }
 
-    public Iterator<KeyValueEntry> keyValueEntryIterator() {
+    public KeyValueEntryIterator keyValueEntryIterator() {
         return new KeyValueEntryIterator(blocks);
+    }
+
+    boolean overlaps(String minKey, String maxKey) {
+        return !(isLessThan(getMaxKey(), minKey)
+                || isGreaterThan(getMinKey(), maxKey));
     }
 
     class SegmentWriter {

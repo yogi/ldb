@@ -159,18 +159,18 @@ public class Compactor {
         }
 
         public void compactSegments(List<Segment> segments, Level toLevel) {
-            PriorityQueue<SegmentScanner> scanners = segments.stream()
-                    .map(SegmentScanner::new)
-                    .filter(SegmentScanner::hasNext)
-                    .collect(Collectors.toCollection(PriorityQueue::new));
-
             Segment segment = null;
             Segment.SegmentWriter writer = null;
             String minKey = null;
             String maxKey = null;
 
+            PriorityQueue<SegmentScanner> pendingScanners = segments.stream()
+                    .map(SegmentScanner::new)
+                    .filter(SegmentScanner::hasNext)
+                    .collect(Collectors.toCollection(PriorityQueue::new));
+
             do {
-                SegmentScanner scanner = scanners.peek();
+                SegmentScanner scanner = pendingScanners.peek();
                 if (scanner == null) {
                     break;
                 } else {
@@ -192,13 +192,13 @@ public class Compactor {
                     }
 
                     PriorityQueue<SegmentScanner> nextScanners = new PriorityQueue<>();
-                    while ((scanner = scanners.poll()) != null) {
+                    while ((scanner = pendingScanners.poll()) != null) {
                         scanner.moveToNextIfEquals(entry.getKey());
                         if (scanner.hasNext()) {
                             nextScanners.add(scanner);
                         }
                     }
-                    scanners = nextScanners;
+                    pendingScanners = nextScanners;
                 }
             } while (true);
 
@@ -213,13 +213,9 @@ public class Compactor {
             return nextToNextLevel.segmentsSpannedBy(minKey, maxKey) > 10;
         }
 
-        public double getScore() {
-            return level.getCompactionScore();
-        }
-
         private static class SegmentScanner implements Comparable<SegmentScanner> {
             private final Segment segment;
-            private final Iterator<KeyValueEntry> iterator;
+            private final KeyValueEntryIterator iterator;
             private KeyValueEntry next;
 
             public SegmentScanner(Segment segment) {
@@ -233,10 +229,7 @@ public class Compactor {
             @Override
             public int compareTo(SegmentScanner other) {
                 int result = peek().getKey().compareTo(other.peek().getKey());
-                if (result != 0) {
-                    return result;
-                }
-                return other.segment.num - segment.num;
+                return result == 0 ? other.segment.num - segment.num : result;
             }
 
             private KeyValueEntry peek() {
