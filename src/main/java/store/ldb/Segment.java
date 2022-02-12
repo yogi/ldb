@@ -113,7 +113,7 @@ public class Segment {
         private BlockWriter blockWriter;
         private String minKey;
         private String maxKey;
-        private int keyCount;
+        int keyCount;
 
         public SegmentWriter() {
             assertNotReady();

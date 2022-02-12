@@ -39,7 +39,7 @@ public class Compactor {
     }
 
     public void start() {
-        levelZeroExecutorService = Executors.newFixedThreadPool(2);
+        levelZeroExecutorService = Executors.newFixedThreadPool(1);
         levelZeroThread.start();
         otherLevelsExecutorService = Executors.newFixedThreadPool(4);
         otherLevelsThread.start();
@@ -50,7 +50,14 @@ public class Compactor {
         while (!stop.get()) {
             if (stop.get()) break;
             try {
-                levelZeroExecutorService.submit(levelZeroCompactor::runCompaction);
+                levelZeroExecutorService.submit(() -> {
+                    try {
+                        levelZeroCompactor.runCompaction();
+                    } catch (Exception e) {
+                        LOG.error("caught exception in runCompaction, exiting: ", e);
+                        System.exit(1);
+                    }
+                });
                 sleepSilently();
             } catch (Exception e) {
                 LOG.error("caught exception in compact loop, ignoring and retrying", e);
@@ -66,7 +73,14 @@ public class Compactor {
             try {
                 final Optional<LevelCompactor> lc = pickCompactor();
                 lc.ifPresent(levelCompactor -> {
-                    otherLevelsExecutorService.submit(levelCompactor::runCompaction);
+                    otherLevelsExecutorService.submit(() -> {
+                        try {
+                            levelCompactor.runCompaction();
+                        } catch (Exception e) {
+                            LOG.error("caught exception in runCompaction, exiting: ", e);
+                            System.exit(1);
+                        }
+                    });
                 });
                 sleepSilently();
             } catch (Exception e) {
@@ -197,11 +211,22 @@ public class Compactor {
 
                     writer.write(entry);
                     maxKey = entry.getKey();
-                    if (writer.isFull(config.maxSegmentSize) || crossedOverlappingSegmentsThresholdOfNextToNextLevel(minKey, maxKey)) {
-                        writer.done();
-                        toLevel.addSegment(segment);
-                        stats.incrNewSegments();
-                        stats.incrTotalBytesWritten(segment.totalBytes());
+
+                    final boolean writerFull = writer.isFull(config.maxSegmentSize);
+                    boolean spanThresholdCrossed = false;
+                    final Level.SegmentSpan span;
+                    if (nextToNextLevel != null) {
+                        span = nextToNextLevel.segmentSpan(minKey, maxKey);
+                        if (span.count() > 10 || span.size() > (10L * config.maxSegmentSize)) {
+                            spanThresholdCrossed = true;
+                        }
+                    }
+                    if (writerFull || spanThresholdCrossed) {
+                        if (writer.keyCount <= 1) {
+                            LOG.debug("!!! creating new segment after only 1 entry, writerFull: {}, spanCrossed: {} - nextToNextLevel {} for range {} - {}",
+                                    nextToNextLevel, writerFull, spanThresholdCrossed, minKey, maxKey);
+                        }
+                        flushSegment(toLevel, stats, segment, writer);
                         segment = null;
                         writer = null;
                     }
@@ -218,16 +243,15 @@ public class Compactor {
             } while (true);
 
             if (segment != null) {
-                writer.done();
-                toLevel.addSegment(segment);
-                stats.incrNewSegments();
-                stats.incrTotalBytesWritten(segment.totalBytes());
+                flushSegment(toLevel, stats, segment, writer);
             }
         }
 
-        private boolean crossedOverlappingSegmentsThresholdOfNextToNextLevel(String minKey, String maxKey) {
-            if (nextToNextLevel == null) return false;
-            return nextToNextLevel.segmentsSpannedBy(minKey, maxKey) > 10;
+        private void flushSegment(Level toLevel, CompactionStatistics stats, Segment segment, Segment.SegmentWriter writer) {
+            writer.done();
+            toLevel.addSegment(segment);
+            stats.incrNewSegments();
+            stats.incrTotalBytesWritten(segment.totalBytes());
         }
 
         private static class SegmentScanner implements Comparable<SegmentScanner> {

@@ -50,6 +50,8 @@ class SegmentMetadata {
     }
 
     public static SegmentMetadata writeTo(int offset, int blockIndexOffset, String minKey, String maxKey, int keyCount, DataOutputStream os) {
+        assertMinKeyNotGreaterThanMaxKey(minKey, maxKey);
+
         try {
             // write the variable length fields first
             os.writeShort(minKey.length());
@@ -70,6 +72,12 @@ class SegmentMetadata {
             return new SegmentMetadata(offset, blockIndexOffset, minKey, maxKey, keyCount, totalBytes);
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private static void assertMinKeyNotGreaterThanMaxKey(String minKey, String maxKey) {
+        if (StringUtils.isGreaterThan(minKey, maxKey)) {
+            throw new AssertionError(format("minKey greater %s than maxKey %s", minKey, maxKey));
         }
     }
 

@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import static java.lang.String.format;
 import static store.ldb.StringUtils.*;
 import static store.ldb.Utils.roundTo;
+import static store.ldb.Utils.shouldNotGetHere;
 
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
@@ -76,8 +77,21 @@ public class Level {
             if (!segments.add(segment)) {
                 throw new IllegalStateException(format("segment %s was not added to level %s\n", segment.fileName, dirPathName()));
             }
+            if (num > 0) assertSegmentsAreNonOverlapping();
         } finally {
             lock.writeLock().unlock();
+        }
+    }
+
+    private void assertSegmentsAreNonOverlapping() {
+        final List<Segment> list = new ArrayList<>(new ArrayList<>(segments));
+        for (int i = 0; i < list.size() - 1; i++) {
+            Segment segment = list.get(i);
+            Segment nextSegment = list.get(i + 1);
+            if (segment.isMarkedForCompaction() || nextSegment.isMarkedForCompaction()) continue;
+            if (isGreaterThan(segment.getMaxKey(), nextSegment.getMinKey())) {
+                shouldNotGetHere(format("found overlapping segments %s, %s", segment, nextSegment));
+            }
         }
     }
 
@@ -223,17 +237,19 @@ public class Level {
         }
     }
 
-    public int segmentsSpannedBy(String minKey, String maxKey) {
+    public SegmentSpan segmentSpan(String minKey, String maxKey) {
         assertLevelIsKeySorted();
         lock.readLock().lock();
         try {
             int count = 0;
+            long size = 0;
             for (Segment segment : this.segments) {
-                if (segment.overlaps(minKey, maxKey) && !segment.isMarkedForCompaction()) {
+                if (!segment.isMarkedForCompaction() && segment.overlaps(minKey, maxKey)) {
                     count++;
+                    size += segment.totalBytes();
                 }
             }
-            return count;
+            return new SegmentSpan(count, size, minKey, maxKey);
         } finally {
             lock.readLock().unlock();
         }
@@ -292,6 +308,9 @@ public class Level {
         segments.forEach(segment -> {
             stats.put(segment.fileName, segment);
         });
+    }
+
+    record SegmentSpan(int count, long size, String minKey, String maxKey) {
     }
 }
 
