@@ -7,10 +7,12 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
+    private static final ReentrantLock LOCK = new ReentrantLock();
 
     private final Config config;
     private final Thread levelZeroThread;
@@ -146,15 +148,29 @@ public class Compactor {
         }
 
         public void runCompaction() {
-            final List<Segment> fromSegments = level.markSegmentsForCompaction();
-            if (fromSegments.isEmpty()) return;
+            final List<Segment> fromSegments;
+            final List<Segment> overlappingSegments;
+            List<Segment> toBeCompacted;
+            final String minKey;
+            final String maxKey;
 
-            final String minKey = Collections.min(fromSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
-            final String maxKey = Collections.max(fromSegments.stream().map(Segment::getMaxKey).collect(Collectors.toList()));
-            final List<Segment> overlappingSegments = nextLevel.markOverlappingSegmentsForCompaction(minKey, maxKey);
+            LOCK.lock();
+            try {
+                fromSegments = level.getSegmentsForCompaction();
+                if (fromSegments.isEmpty()) return;
 
-            List<Segment> toBeCompacted = addLists(fromSegments, overlappingSegments);
-            if (toBeCompacted.isEmpty()) return;
+                minKey = Collections.min(fromSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
+                maxKey = Collections.max(fromSegments.stream().map(Segment::getMaxKey).collect(Collectors.toList()));
+                overlappingSegments = nextLevel.getOverlappingSegments(null, minKey, maxKey);
+                if (overlappingSegments.stream().anyMatch(Segment::isMarkedForCompaction)) return;
+
+                toBeCompacted = addLists(fromSegments, overlappingSegments);
+                if (toBeCompacted.isEmpty()) return;
+
+                toBeCompacted.forEach(Segment::markForCompaction);
+            } finally {
+                LOCK.unlock();
+            }
 
             CompactionStatistics stats = new CompactionStatistics();
             long start = System.currentTimeMillis();

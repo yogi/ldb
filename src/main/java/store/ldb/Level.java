@@ -178,28 +178,31 @@ public class Level {
         return dirPathName();
     }
 
-    List<Segment> markSegmentsForCompaction() {
+    List<Segment> getSegmentsForCompaction() {
         lock.readLock().lock();
         try {
-            List<Segment> list = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toCollection(LinkedList::new));
-            final Integer threshold = config.levelCompactionThreshold.apply(this);
+            List<Segment> list = segments.stream()
+                    .filter(segment -> !segment.isMarkedForCompaction())
+                    .collect(Collectors.toCollection(LinkedList::new));
+
+            Integer threshold = config.levelCompactionThreshold.apply(this);
             if (list.size() < threshold) return List.of();
+
             if (this.getNum() == 0) {
                 // for level0 pick the oldest and add all overlapping ones for compaction
                 Collections.reverse(list);
-                final Segment picked = list.remove(0);
+                Segment oldest = list.remove(0);
                 List<Segment> toCompact = new ArrayList<>();
-                toCompact.add(picked);
-                final List<Segment> overlappingSegments = getOverlappingSegments(list, picked.getMinKey(), picked.getMaxKey());
+                toCompact.add(oldest);
+                List<Segment> overlappingSegments = getOverlappingSegments(list, oldest.getMinKey(), oldest.getMaxKey());
                 toCompact.addAll(overlappingSegments.subList(0, Math.min(overlappingSegments.size(), 10)));
                 list = toCompact;
-                LOG.debug("adding {}/{} overlapping segments to level0 for {}", toCompact.size() - 1, overlappingSegments.size(), picked);
+                LOG.debug("adding {}/{} overlapping segments to level0 for {}", toCompact.size() - 1, overlappingSegments.size(), oldest);
             } else {
                 Segment nextSegment = getNextSegmentToCompact(list);
                 if (nextSegment == null) return List.of();
                 list = List.of(nextSegment);
             }
-            list.forEach(Segment::markForCompaction);
             return list;
         } finally {
             lock.readLock().unlock();
@@ -224,14 +227,13 @@ public class Level {
         return nextSegment;
     }
 
-    public List<Segment> markOverlappingSegmentsForCompaction(String minKey, String maxKey) {
-        assertLevelIsKeySorted();
+    public List<Segment> getOverlappingSegments(Collection<Segment> list, String minKey, String maxKey) {
         lock.readLock().lock();
         try {
-            final List<Segment> list = getOverlappingSegments(new ArrayList<>(this.segments), minKey, maxKey);
-            if (list.stream().anyMatch(Segment::isMarkedForCompaction)) return List.of();
-            list.forEach(Segment::markForCompaction);
-            return list;
+            if (list == null) list = new ArrayList<>(this.segments);
+            return list.stream()
+                    .filter(segment -> segment.overlaps(minKey, maxKey))
+                    .collect(Collectors.toList());
         } finally {
             lock.readLock().unlock();
         }
@@ -253,12 +255,6 @@ public class Level {
         } finally {
             lock.readLock().unlock();
         }
-    }
-
-    private List<Segment> getOverlappingSegments(Collection<Segment> list, String minKey, String maxKey) {
-        return list.stream()
-                .filter(segment -> segment.overlaps(minKey, maxKey))
-                .collect(Collectors.toList());
     }
 
     private void assertLevelIsKeySorted() {
