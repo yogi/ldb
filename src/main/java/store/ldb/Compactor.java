@@ -43,7 +43,7 @@ public class Compactor {
     public void start() {
         levelZeroExecutorService = Executors.newFixedThreadPool(1);
         levelZeroThread.start();
-        otherLevelsExecutorService = Executors.newFixedThreadPool(4);
+        otherLevelsExecutorService = Executors.newFixedThreadPool(1);
         otherLevelsThread.start();
     }
 

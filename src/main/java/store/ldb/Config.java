@@ -20,12 +20,9 @@ public class Config {
                 withCompressionType(CompressionType.LZ4).
                 withMaxSegmentSize(2 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
-                withNumLevels(4).
+                withNumLevels(3).
                 withMaxBlockSize(100 * KB).
-                withMaxWalSize(builder.maxSegmentSize // goal is to get level0 segments as close to maxSegmentSize after splits and compression
-                        * 10 // num segments a memtable is split into
-                        * 5  // avg compression factor
-                ).
+                withMaxWalSize(4 * MB).
                 withSleepBetweenCompactionsMs(100);
     }
 

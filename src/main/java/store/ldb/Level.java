@@ -127,13 +127,9 @@ public class Level {
     }
 
     public void flushMemtable(TreeMap<String, String> memtable) {
-        List<Map.Entry<String, String>> all = new ArrayList<>(memtable.entrySet());
-        final List<List<Map.Entry<String, String>>> lists = Lists.partition(all, all.size() / 10);
-        for (List<Map.Entry<String, String>> entries : lists) {
-            Segment segment = createNextSegment();
-            segment.writeMemtable(entries);
-            addSegment(segment);
-        }
+        Segment segment = createNextSegment();
+        segment.writeMemtable(memtable);
+        addSegment(segment);
     }
 
     private int nextSegmentNumber() {
@@ -200,10 +196,8 @@ public class Level {
                 List<Segment> toCompact = new ArrayList<>();
                 toCompact.add(oldest);
                 List<Segment> overlappingSegments = getOverlappingSegments(list, oldest.getMinKey(), oldest.getMaxKey());
-                overlappingSegments = overlappingSegments.subList(0, Math.min(overlappingSegments.size(), 10));
                 toCompact.addAll(overlappingSegments);
                 list = toCompact;
-                LOG.debug("adding {}/{} overlapping segments to level0 for {}", toCompact.size() - 1, overlappingSegments.size(), oldest);
             } else {
                 Segment nextSegment = getNextSegmentToCompact(list);
                 if (nextSegment == null) return List.of();
@@ -236,7 +230,10 @@ public class Level {
     public List<Segment> getOverlappingSegments(Collection<Segment> list, String minKey, String maxKey) {
         lock.readLock().lock();
         try {
-            if (list == null) list = new ArrayList<>(this.segments);
+            if (list == null) {
+                assertLevelIsKeySorted();
+                list = new ArrayList<>(this.segments);
+            }
             return list.stream()
                     .filter(segment -> segment.overlaps(minKey, maxKey))
                     .collect(Collectors.toList());

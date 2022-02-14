@@ -1,6 +1,5 @@
 package app;
 
-import net.jpountz.lz4.LZ4Factory;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.jupiter.api.AfterEach;
