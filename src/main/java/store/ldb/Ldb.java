@@ -82,7 +82,7 @@ public class Ldb implements Store {
     }
 
     private void writeSegmentIfNeeded() {
-        if (walThresholdCrossed(wal)) {
+        if (wal.totalBytes() >= config.maxWalSize) {
             flushMemtable();
         }
     }
@@ -110,10 +110,6 @@ public class Ldb implements Store {
         } finally {
             writeSegmentInProgress.set(false);
         }
-    }
-
-    private boolean walThresholdCrossed(WriteAheadLog wal) {
-        return wal.totalBytes() >= config.maxWalSize;
     }
 
     @Override

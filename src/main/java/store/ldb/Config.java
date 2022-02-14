@@ -15,13 +15,17 @@ public class Config {
     public final long sleepBetweenCompactionsMs;
 
     public static ConfigBuilder defaultConfig() {
-        return builder().
+        final ConfigBuilder builder = builder();
+        return builder.
                 withCompressionType(CompressionType.LZ4).
                 withMaxSegmentSize(2 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
                 withNumLevels(4).
                 withMaxBlockSize(100 * KB).
-                withMaxWalSize(10 * MB).
+                withMaxWalSize(builder.maxSegmentSize // goal is to get level0 segments as close to maxSegmentSize after splits and compression
+                        * 10 // num segments a memtable is split into
+                        * 5  // avg compression factor
+                ).
                 withSleepBetweenCompactionsMs(100);
     }
 

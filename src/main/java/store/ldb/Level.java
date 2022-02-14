@@ -1,5 +1,6 @@
 package store.ldb;
 
+import com.google.common.collect.Lists;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -126,9 +127,13 @@ public class Level {
     }
 
     public void flushMemtable(TreeMap<String, String> memtable) {
-        Segment segment = createNextSegment();
-        segment.writeMemtable(memtable);
-        addSegment(segment);
+        List<Map.Entry<String, String>> all = new ArrayList<>(memtable.entrySet());
+        final List<List<Map.Entry<String, String>>> lists = Lists.partition(all, all.size() / 10);
+        for (List<Map.Entry<String, String>> entries : lists) {
+            Segment segment = createNextSegment();
+            segment.writeMemtable(entries);
+            addSegment(segment);
+        }
     }
 
     private int nextSegmentNumber() {
@@ -195,7 +200,8 @@ public class Level {
                 List<Segment> toCompact = new ArrayList<>();
                 toCompact.add(oldest);
                 List<Segment> overlappingSegments = getOverlappingSegments(list, oldest.getMinKey(), oldest.getMaxKey());
-                toCompact.addAll(overlappingSegments.subList(0, Math.min(overlappingSegments.size(), 10)));
+                overlappingSegments = overlappingSegments.subList(0, Math.min(overlappingSegments.size(), 10));
+                toCompact.addAll(overlappingSegments);
                 list = toCompact;
                 LOG.debug("adding {}/{} overlapping segments to level0 for {}", toCompact.size() - 1, overlappingSegments.size(), oldest);
             } else {
