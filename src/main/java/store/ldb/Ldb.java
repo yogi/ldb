@@ -25,7 +25,7 @@ public class Ldb implements Store {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
     public Ldb(String dir) {
-        this(dir, Config.defaultConfig().build());
+        this(dir, Config.defaultConfig());
     }
 
     public Ldb(String dir, Config config) {

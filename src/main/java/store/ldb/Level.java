@@ -18,10 +18,9 @@ import static store.ldb.Utils.shouldNotGetHere;
 
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
-    public static final Comparator<Segment> NUM_DESC_SEGMENT_COMPARATOR = (o1, o2) -> o2.num - o1.num;
+    public static final Comparator<Segment> NUM_DESC_SEGMENT_COMPARATOR = Comparator.comparing(Segment::getNum).reversed();
     public static final Comparator<Segment> KEY_ASC_SEGMENT_COMPARATOR =
             Comparator.comparing(Segment::getMinKey)
-                    .thenComparing(Segment::getMaxKey)
                     .thenComparing(Segment::getNum);
 
     private final File dir;

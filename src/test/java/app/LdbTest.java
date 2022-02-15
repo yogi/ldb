@@ -21,12 +21,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class LdbTest {
     private final File basedir = new File("tmp/ldb");
     private Ldb store;
-    private Config.ConfigBuilder defaultConfig;
+    private Config defaultConfig;
 
     @BeforeEach
     void setUp() throws IOException {
         deleteDataDir();
-        defaultConfig = new Config.ConfigBuilder()
+        defaultConfig = new Config()
                 .withCompressionType(CompressionType.LZ4)
                 .withLevelCompactionThreshold((level) -> 1)
                 .withNumLevels(1)
@@ -53,7 +53,7 @@ public class LdbTest {
 
     @Test
     public void testMultipleSetsAndGets() {
-        final Config config = defaultConfig.withNumLevels(3).build();
+        final Config config = defaultConfig.withNumLevels(3);
         store = new Ldb(basedir.getPath(), config);
 
         final int max = 10;
@@ -81,13 +81,13 @@ public class LdbTest {
 
     @Test
     public void testBlockStorage() {
-        store = new Ldb(basedir.getPath(), defaultConfig.build());
+        store = new Ldb(basedir.getPath(), defaultConfig);
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal1", "level0/seg0");
 
-        store = new Ldb(basedir.getPath(), defaultConfig.build());
+        store = new Ldb(basedir.getPath(), defaultConfig);
 
         assertEquals("a", store.get("1").orElseThrow());
         assertFiles("wal2", "level0/seg0");
@@ -102,8 +102,7 @@ public class LdbTest {
         final Config config = defaultConfig
                 .withLevelCompactionThreshold((level) -> 1)
                 .withNumLevels(2)
-                .withMaxBlockSize(1)
-                .build();
+                .withMaxBlockSize(1);
         store = new Ldb(basedir.getPath(), config);
 
         store.set("1", "a");
@@ -120,8 +119,7 @@ public class LdbTest {
         final Config config = defaultConfig
                 .withLevelCompactionThreshold((level) -> 4)
                 .withNumLevels(2)
-                .withMaxBlockSize(1)
-                .build();
+                .withMaxBlockSize(1);
         store = new Ldb(basedir.getPath(), config);
 
         store.set("1", "a");
@@ -147,8 +145,7 @@ public class LdbTest {
     @Test
     public void testThreeLevelOverlappingCompactions() {
         final Config config = defaultConfig
-                .withNumLevels(3)
-                .build();
+                .withNumLevels(3);
         store = new Ldb(basedir.getPath(), config);
 
         store.set("1", "a");
