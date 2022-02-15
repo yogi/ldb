@@ -1,11 +1,13 @@
 counter = 0
-math.randomseed(os.time())
+maxRand = 1000000
+
+math.randomseed(9) -- use same seed as put.lua so that probeIds match
 
 request = function()
     wrk.method = "GET"
     counter = (counter + 1)
     count = tostring(counter)
-    pid = math.random(1, 100000)
+    pid = math.random(1, maxRand)
     probeId = "PRB" .. pid
     path = "/probe/" .. probeId .. "/latest"
     --io.write(string.format("probe %s %d\n", probeId, counter))

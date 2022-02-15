@@ -1,12 +1,13 @@
 counter = 0
+maxRand = 1000000
 
-math.randomseed(os.time())
+math.randomseed(9) -- use predictable seed so that probeIds match in get.lua
 
 request = function()
     wrk.method = "PUT"
     wrk.headers["Content-Type"] = "application/json"
     counter = (counter + 1)
-    pid = math.random(1000000)
+    pid = math.random(1, maxRand)
     probeId = "PRB" .. pid
     eventId = "7707d6a0-61b5-11ec-9f10-0800200c9a66" .. pid
     path = "/probe/" .. probeId .. "/event/" .. eventId
