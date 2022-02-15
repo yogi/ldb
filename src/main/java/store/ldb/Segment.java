@@ -252,7 +252,7 @@ public class Segment {
     public String toString() {
         return metadata == null ?
                 format("[Segment %s]", fileName) :
-                format("[Segment %s min:%s max:%s, #keys:%d, size:%.2fKB]", fileName, getMinKey(), getMaxKey(), keyCount(), totalBytes() / 1024.0);
+                format("[Segment %s min:%s max:%s, markedForCompaction: %s, #keys:%d, size:%.2fKB]", fileName, getMinKey(), getMaxKey(), isMarkedForCompaction(), keyCount(), totalBytes() / 1024.0);
     }
 
 }

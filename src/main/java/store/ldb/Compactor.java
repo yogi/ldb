@@ -61,7 +61,7 @@ public class Compactor {
                 .collect(Collectors.toList());
         Map.Entry<LevelCompactor, Double> picked = list.get(0);
         if (picked != null && picked.getValue() > 0) {
-            LOG.debug("pickCompactor {} from {}", picked, list);
+            //LOG.debug("pickCompactor {} from {}", picked, list);
             return Optional.of(picked.getKey());
         }
         return Optional.empty();
