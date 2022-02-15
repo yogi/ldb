@@ -53,10 +53,10 @@ public class Segment {
         }
     }
 
-    public void writeMemtable(TreeMap<String, String> memtable) {
+    public void writeMemtable(List<Map.Entry<String, String>> memtable) {
         assertNotReady();
         LOG.debug("write memtable to segment {}", fileName);
-        for (Map.Entry<String, String> entry : memtable.entrySet()) {
+        for (Map.Entry<String, String> entry : memtable) {
             writer.write(new KeyValueEntry((byte) 0, entry.getKey(), entry.getValue()));
         }
         writer.done();

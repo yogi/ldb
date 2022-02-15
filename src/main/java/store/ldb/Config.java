@@ -1,6 +1,10 @@
 package store.ldb;
 
+import java.util.List;
 import java.util.function.Function;
+
+import static store.ldb.CompressionType.LZ4;
+import static store.ldb.CompressionType.SNAPPY;
 
 public class Config {
     public static final int KB = 1024;
@@ -13,16 +17,22 @@ public class Config {
     public int maxBlockSize;
     public int maxWalSize;
     public long sleepBetweenCompactionsMs;
+    public int memtablePartitions;
 
     public static Config defaultConfig() {
-        return new Config().
-                withCompressionType(CompressionType.LZ4).
+        final Config config = new Config();
+        final CompressionType compressionType = LZ4;
+        int compressionFactorEstimate = List.of(LZ4, SNAPPY).contains(compressionType) ? 8 : 1;
+        return config.
+                withMemtablePartitions(3).
+                withCompressionType(compressionType).
                 withMaxSegmentSize(2 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
                 withNumLevels(3).
                 withMaxBlockSize(100 * KB).
-                withMaxWalSize(4 * MB).
-                withSleepBetweenCompactionsMs(100);
+                withMaxWalSize(4 * MB * config.memtablePartitions * compressionFactorEstimate).
+                withSleepBetweenCompactionsMs(100)
+                ;
     }
 
     @Override
@@ -35,6 +45,11 @@ public class Config {
                 ", maxWalSize=" + maxWalSize +
                 ", sleepBetweenCompactionsMs=" + sleepBetweenCompactionsMs +
                 '}';
+    }
+
+    public Config withMemtablePartitions(int memtablePartitions) {
+        this.memtablePartitions = memtablePartitions;
+        return this;
     }
 
     public Config withCompressionType(CompressionType compressionType) {

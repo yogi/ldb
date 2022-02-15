@@ -126,9 +126,14 @@ public class Level {
     }
 
     public void flushMemtable(TreeMap<String, String> memtable) {
-        Segment segment = createNextSegment();
-        segment.writeMemtable(memtable);
-        addSegment(segment);
+        final List<Map.Entry<String, String>> original = new ArrayList<>(memtable.entrySet());
+        final List<List<Map.Entry<String, String>>> partitions = Lists.partition(original, original.size() / config.memtablePartitions);
+        for (List<Map.Entry<String, String>> partition : partitions) {
+            if (partition.isEmpty()) continue;
+            Segment segment = createNextSegment();
+            segment.writeMemtable(partition);
+            addSegment(segment);
+        }
     }
 
     private int nextSegmentNumber() {
@@ -195,7 +200,7 @@ public class Level {
                 List<Segment> toCompact = new ArrayList<>();
                 toCompact.add(oldest);
                 List<Segment> overlappingSegments = getOverlappingSegments(list, oldest.getMinKey(), oldest.getMaxKey());
-                overlappingSegments = overlappingSegments.subList(0, Math.min(overlappingSegments.size(), 10));
+                //overlappingSegments = overlappingSegments.subList(0, Math.min(overlappingSegments.size(), 10));
                 toCompact.addAll(overlappingSegments);
                 list = toCompact;
             } else {
@@ -289,7 +294,7 @@ public class Level {
         try {
             final List<Segment> notBeingCompacted = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
             if (num == 0) {
-                return roundTo(notBeingCompacted.size() / 4.0, 3);
+                return roundTo(notBeingCompacted.size() / (2.0 * config.memtablePartitions), 3);
             } else {
                 double totalBytes = notBeingCompacted.stream().mapToLong(Segment::totalBytes).sum();
                 final double score = totalBytes / maxBytes();
