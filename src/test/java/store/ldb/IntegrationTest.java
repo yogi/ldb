@@ -41,7 +41,8 @@ public class IntegrationTest {
             final String randomString = RandomStringUtils.randomAlphabetic(5 * 1024);
             for (int i = 0; i < MAX_KEYS; i++) {
                 final String key = String.valueOf(((int) (Math.random() * MAX_KEYS)));
-                store.set(key, key + "_" + randomString);
+                final String value = key + "_" + randomString;
+                store.set(key, value);
                 //System.out.println("set key = " + key);
                 queue.add(key);
             }
