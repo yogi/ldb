@@ -4,8 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
@@ -15,13 +13,9 @@ public class Compactor {
     private static final ReentrantLock LOCK = new ReentrantLock();
 
     private final Config config;
-    private final Thread levelZeroThread;
-    private final Thread otherLevelsThread;
+    private final Thread compactionThread;
     private final List<LevelCompactor> levelCompactors = new ArrayList<>();
     private final AtomicBoolean stop = new AtomicBoolean();
-    private LevelCompactor levelZeroCompactor;
-    private ExecutorService levelZeroExecutorService;
-    private ExecutorService otherLevelsExecutorService;
 
     public Compactor(TreeMap<Integer, Level> levels, Config aConfig) {
         config = aConfig;
@@ -29,32 +23,25 @@ public class Compactor {
             final Level level = levels.get(i);
             final Level nextLevel = levels.get(i + 1);
             final Level nextToNextLevel = (i + 2) < levels.size() ? levels.get(i + 2) : null;
-            if (i == 0) {
-                levelZeroCompactor = new LevelCompactor(level, nextLevel, nextToNextLevel, config);
-            } else {
-                LevelCompactor levelCompactor = new LevelCompactor(level, nextLevel, nextToNextLevel, config);
-                levelCompactors.add(levelCompactor);
-            }
+            LevelCompactor levelCompactor = new LevelCompactor(level, nextLevel, nextToNextLevel, config);
+            levelCompactors.add(levelCompactor);
         }
-        levelZeroThread = new Thread(this::levelZeroDispatch, "compactor-0");
-        otherLevelsThread = new Thread(this::otherLevelsPrioritize, "compactor-rest");
+        compactionThread = new Thread(this::prioritize, "compaction");
     }
 
     public void start() {
-        levelZeroExecutorService = Executors.newFixedThreadPool(1);
-        levelZeroThread.start();
-        otherLevelsExecutorService = Executors.newFixedThreadPool(1);
-        otherLevelsThread.start();
+        compactionThread.start();
     }
 
-    private void levelZeroDispatch() {
-        LOG.info("started");
+    private void prioritize() {
+        LOG.info("compaction thread started");
         while (!stop.get()) {
             if (stop.get()) break;
             try {
-                levelZeroExecutorService.submit(() -> {
+                final Optional<LevelCompactor> lc = pickCompactor();
+                lc.ifPresent(levelCompactor -> {
                     try {
-                        levelZeroCompactor.runCompaction();
+                        levelCompactor.runCompaction();
                     } catch (Exception e) {
                         LOG.error("caught exception in runCompaction, exiting: ", e);
                         System.exit(1);
@@ -65,31 +52,7 @@ public class Compactor {
                 LOG.error("caught exception in compact loop, ignoring and retrying", e);
             }
         }
-        LOG.info("exited");
-    }
-
-    private void otherLevelsPrioritize() {
-        LOG.info("started");
-        while (!stop.get()) {
-            if (stop.get()) break;
-            try {
-                final Optional<LevelCompactor> lc = pickCompactor();
-                lc.ifPresent(levelCompactor -> {
-                    otherLevelsExecutorService.submit(() -> {
-                        try {
-                            levelCompactor.runCompaction();
-                        } catch (Exception e) {
-                            LOG.error("caught exception in runCompaction, exiting: ", e);
-                            System.exit(1);
-                        }
-                    });
-                });
-                sleepSilently();
-            } catch (Exception e) {
-                LOG.error("caught exception in compact loop, ignoring and retrying", e);
-            }
-        }
-        LOG.info("exited");
+        LOG.info("compaction thread exited");
     }
 
     private Optional<LevelCompactor> pickCompactor() {
@@ -100,24 +63,20 @@ public class Compactor {
                 .collect(Collectors.toList());
         Map.Entry<LevelCompactor, Double> picked = list.get(0);
         if (picked != null && picked.getValue() > 0) {
-            //LOG.debug("picked {} from {}", picked, list);
+            LOG.debug("pickCompactor {} from {}", picked, list);
             return Optional.of(picked.getKey());
         }
         return Optional.empty();
     }
 
     public void runCompaction(int levelNum) {
-        LevelCompactor compactor = levelNum == 0 ?
-                levelZeroCompactor :
-                levelCompactors.get(levelNum - 1);
-        compactor.runCompaction();
+        levelCompactors.get(levelNum).runCompaction();
     }
 
     public void stop() {
         LOG.debug("stop");
         stop.set(true);
-        if (levelZeroExecutorService != null) levelZeroExecutorService.shutdown();
-        if (otherLevelsExecutorService != null) otherLevelsExecutorService.shutdown();
+        compactionThread.interrupt();
     }
 
 
