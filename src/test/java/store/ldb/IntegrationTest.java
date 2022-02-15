@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.lang.String.format;
 import static org.junit.jupiter.api.Assertions.*;
+import static store.ldb.Config.KB;
 
 public class IntegrationTest {
 
@@ -30,20 +31,27 @@ public class IntegrationTest {
     public void testMultipleSetsAndGetsWithCompactorOn() throws Exception {
         final int MAX_KEYS = 10000;
         final int MAX_READER_THREADS = 5;
+        final int VALUE_SIZE = 2 * KB;
 
         File basedir = new File("tmp/ldb");
         if (basedir.exists()) FileUtils.deleteDirectory(basedir);
-        Ldb store = new Ldb(basedir.getPath());
+        Ldb store = new Ldb(basedir.getPath(),
+                Config.defaultConfig()
+                        .withMaxSegmentSize(VALUE_SIZE * 100)
+                        .withMaxWalSize(VALUE_SIZE * 200)
+                        .withNumLevels(3)
+                        .withMaxBlockSize(VALUE_SIZE * 20)
+                        .withCompressionType(CompressionType.NONE)
+                        .withSleepBetweenCompactionsMs(0));
         store.startCompactor();
 
         BlockingQueue<String> queue = new LinkedBlockingDeque<>();
         new Thread(() -> {
-            final String randomString = RandomStringUtils.randomAlphabetic(5 * 1024);
+            final String randomString = RandomStringUtils.randomAlphabetic(VALUE_SIZE);
             for (int i = 0; i < MAX_KEYS; i++) {
                 final String key = String.valueOf(((int) (Math.random() * MAX_KEYS)));
                 final String value = key + "_" + randomString;
                 store.set(key, value);
-                //System.out.println("set key = " + key);
                 queue.add(key);
             }
         }).start();
@@ -60,7 +68,6 @@ public class IntegrationTest {
                         String key = queue.poll(1000, TimeUnit.MILLISECONDS);
                         if (key == null) break;
                         final String value = store.get(key).orElseThrow(() -> new AssertionError(format("key %s not found", key)));
-                        //System.out.println("got value = " + value.substring(0, value.indexOf("_")));
                         assertTrue(value.startsWith(key + "_"));
                         if (counter.get() % 100 == 0) System.out.println("counter = " + counter);
                     } catch (InterruptedException e) {
