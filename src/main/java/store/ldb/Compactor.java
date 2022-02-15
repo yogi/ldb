@@ -7,6 +7,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import static org.apache.commons.lang3.StringUtils.abbreviate;
+
 public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
 
@@ -135,7 +137,7 @@ public class Compactor {
             overlappingSegments.forEach(nextLevel::removeSegment);
             final long timeTaken = System.currentTimeMillis() - start;
             LOG.debug("compacted {} - {} segments in {} ms - minKey {}, maxKey {}, newSegments {}, totalBytesWritten {}KB",
-                    level, toBeCompacted.size(), timeTaken, minKey, maxKey, stats.newSegments, Utils.roundTo(stats.totalBytesWritten / 1024.0, 2));
+                    level, toBeCompacted.size(), timeTaken, abbreviate(minKey, 15), abbreviate(maxKey, 15), stats.newSegments, Utils.roundTo(stats.totalBytesWritten / 1024.0, 2));
         }
 
         private void copySegment(Segment segment, Level nextLevel, CompactionStatistics stats) {

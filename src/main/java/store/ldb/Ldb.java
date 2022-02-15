@@ -1,10 +1,14 @@
 package store.ldb;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import store.Store;
 
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -51,6 +55,7 @@ public class Ldb implements Store {
     public void set(String key, String value) {
         assertKeySize(key);
         assertValueSize(value);
+        key = DigestUtils.sha256Hex(key);
         lock.writeLock().lock();
         try {
             wal.append(new SetCmd(key, value));
@@ -63,6 +68,7 @@ public class Ldb implements Store {
 
     public Optional<String> get(String key) {
         assertKeySize(key);
+        key = DigestUtils.sha256Hex(key);
         lock.readLock().lock();
         try {
             if (memtable.containsKey(key)) {
