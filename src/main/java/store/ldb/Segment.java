@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
+import static org.apache.commons.lang3.StringUtils.abbreviate;
 import static store.ldb.StringUtils.*;
 
 public class Segment {
@@ -252,7 +253,7 @@ public class Segment {
     public String toString() {
         return metadata == null ?
                 format("[Segment %s]", fileName) :
-                format("[Segment %s min:%s max:%s, markedForCompaction: %s, #keys:%d, size:%.2fKB]", fileName, getMinKey(), getMaxKey(), isMarkedForCompaction(), keyCount(), totalBytes() / 1024.0);
+                format("[Segment %s min:%s max:%s, markedForCompaction: %s, #keys:%d, size:%.2fKB]", fileName, abbreviate(getMinKey(), 15), abbreviate(getMaxKey(), 15), isMarkedForCompaction(), keyCount(), totalBytes() / 1024.0);
     }
 
 }

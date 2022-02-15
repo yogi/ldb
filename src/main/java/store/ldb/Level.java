@@ -127,7 +127,9 @@ public class Level {
 
     public void flushMemtable(TreeMap<String, String> memtable) {
         final List<Map.Entry<String, String>> original = new ArrayList<>(memtable.entrySet());
-        final List<List<Map.Entry<String, String>>> partitions = Lists.partition(original, original.size() / config.memtablePartitions);
+        final List<List<Map.Entry<String, String>>> partitions = original.size() < config.memtablePartitions ?
+                List.of(original) :
+                Lists.partition(original, original.size() / config.memtablePartitions);
         for (List<Map.Entry<String, String>> partition : partitions) {
             if (partition.isEmpty()) continue;
             Segment segment = createNextSegment();
