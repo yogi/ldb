@@ -10,7 +10,6 @@ import java.util.stream.Collectors;
 
 public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
-    private static final ReentrantLock LOCK = new ReentrantLock();
 
     private final Config config;
     private final Thread compactionThread;
@@ -113,23 +112,18 @@ public class Compactor {
             final String minKey;
             final String maxKey;
 
-            LOCK.lock();
-            try {
-                fromSegments = level.getSegmentsForCompaction();
-                if (fromSegments.isEmpty()) return;
+            fromSegments = level.getSegmentsForCompaction();
+            if (fromSegments.isEmpty()) return;
 
-                minKey = Collections.min(fromSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
-                maxKey = Collections.max(fromSegments.stream().map(Segment::getMaxKey).collect(Collectors.toList()));
-                overlappingSegments = nextLevel.getOverlappingSegments(null, minKey, maxKey);
-                if (overlappingSegments.stream().anyMatch(Segment::isMarkedForCompaction)) return;
+            minKey = Collections.min(fromSegments.stream().map(Segment::getMinKey).collect(Collectors.toList()));
+            maxKey = Collections.max(fromSegments.stream().map(Segment::getMaxKey).collect(Collectors.toList()));
+            overlappingSegments = nextLevel.getOverlappingSegments(null, minKey, maxKey);
+            if (overlappingSegments.stream().anyMatch(Segment::isMarkedForCompaction)) return;
 
-                toBeCompacted = addLists(fromSegments, overlappingSegments);
-                if (toBeCompacted.isEmpty()) return;
+            toBeCompacted = addLists(fromSegments, overlappingSegments);
+            if (toBeCompacted.isEmpty()) return;
 
-                toBeCompacted.forEach(Segment::markForCompaction);
-            } finally {
-                LOCK.unlock();
-            }
+            toBeCompacted.forEach(Segment::markForCompaction);
 
             CompactionStatistics stats = new CompactionStatistics();
             long start = System.currentTimeMillis();
