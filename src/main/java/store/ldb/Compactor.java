@@ -136,16 +136,16 @@ public class Compactor {
             fromSegments.forEach(level::removeSegment);
             overlappingSegments.forEach(nextLevel::removeSegment);
             final long timeTaken = System.currentTimeMillis() - start;
-            LOG.debug("compacted {} - {} segments in {} ms - minKey {}, maxKey {}, newSegments {}, totalBytesWritten {}KB",
-                    level, toBeCompacted.size(), timeTaken, abbreviate(minKey, 15), abbreviate(maxKey, 15), stats.newSegments, Utils.roundTo(stats.totalBytesWritten / 1024.0, 2));
+            LOG.debug("compacted {} - {} segments in {} ms - keysRead {}, keysWritten {} - minKey {}, maxKey {}, newSegments {}, totalBytesWritten {}KB",
+                    level, toBeCompacted.size(), timeTaken, stats.keysRead, stats.keysWritten, abbreviate(minKey, 15), abbreviate(maxKey, 15), stats.segmentsCreated, Utils.roundTo(stats.bytesWritten / 1024.0, 2));
         }
 
         private void copySegment(Segment segment, Level nextLevel, CompactionStatistics stats) {
             final Segment newSegment = nextLevel.createNextSegment();
             newSegment.copyFrom(segment);
             nextLevel.addSegment(newSegment);
-            stats.incrNewSegments();
-            stats.incrTotalBytesWritten(segment.totalBytes());
+            stats.incrSegmentsCreated();
+            stats.incrBytesWritten(segment.totalBytes());
         }
 
         private List<Segment> addLists(List<Segment> fromSegments, List<Segment> toSegments) {
@@ -159,10 +159,10 @@ public class Compactor {
             Segment segment = null;
             Segment.SegmentWriter writer = null;
             String minKey = null;
-            String maxKey = null;
+            String maxKey;
 
             PriorityQueue<SegmentScanner> pendingScanners = segments.stream()
-                    .map(SegmentScanner::new)
+                    .map((Segment seg) -> new SegmentScanner(seg, stats))
                     .filter(SegmentScanner::hasNext)
                     .collect(Collectors.toCollection(PriorityQueue::new));
 
@@ -220,20 +220,24 @@ public class Compactor {
         private void flushSegment(Level toLevel, CompactionStatistics stats, Segment segment, Segment.SegmentWriter writer) {
             writer.done();
             toLevel.addSegment(segment);
-            stats.incrNewSegments();
-            stats.incrTotalBytesWritten(segment.totalBytes());
+            stats.incrSegmentsCreated();
+            stats.incrBytesWritten(segment.totalBytes());
+            stats.incrKeysWritten(writer.keyCount);
         }
 
         private static class SegmentScanner implements Comparable<SegmentScanner> {
             private final Segment segment;
             private final KeyValueEntryIterator iterator;
+            private final CompactionStatistics stats;
             private KeyValueEntry next;
 
-            public SegmentScanner(Segment segment) {
+            public SegmentScanner(Segment segment, CompactionStatistics stats) {
                 this.segment = segment;
                 this.iterator = segment.keyValueEntryIterator();
+                this.stats = stats;
                 if (iterator.hasNext()) {
                     next = iterator.next();
+                    stats.incrKeysRead();
                 }
             }
 
@@ -253,9 +257,12 @@ public class Compactor {
 
             public void moveToNextIfEquals(String key) {
                 if (key.equals(next.getKey())) {
-                    next = iterator.hasNext() ?
-                            iterator.next() :
-                            null;
+                    if (iterator.hasNext()) {
+                        stats.incrKeysRead();
+                        next = iterator.next();
+                    } else {
+                        next = null;
+                    }
                 }
             }
 
@@ -271,15 +278,25 @@ public class Compactor {
     }
 
     static class CompactionStatistics {
-        int newSegments;
-        long totalBytesWritten;
+        int segmentsCreated;
+        long bytesWritten;
+        int keysWritten;
+        int keysRead;
 
-        public void incrNewSegments() {
-            newSegments++;
+        public void incrSegmentsCreated() {
+            segmentsCreated++;
         }
 
-        public void incrTotalBytesWritten(long bytes) {
-            totalBytesWritten += bytes;
+        public void incrBytesWritten(long bytes) {
+            bytesWritten += bytes;
+        }
+
+        public void incrKeysWritten(int n) {
+            keysWritten += n;
+        }
+
+        public void incrKeysRead() {
+            keysRead++;
         }
     }
 }

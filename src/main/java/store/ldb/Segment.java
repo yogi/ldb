@@ -227,7 +227,7 @@ public class Segment {
         return num;
     }
 
-    public long keyCount() {
+    public int keyCount() {
         return metadata.keyCount;
     }
 
