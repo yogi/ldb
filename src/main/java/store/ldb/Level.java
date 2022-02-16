@@ -286,11 +286,6 @@ public class Level {
         }
     }
 
-    private double maxBytes() {
-        assertLevelIsKeySorted(); // does not apply for level0
-        return Math.pow(10, num) * Config.MB;
-    }
-
     public double getCompactionScore() {
         lock.readLock().lock();
         try {
@@ -298,8 +293,9 @@ public class Level {
             if (num == 0) {
                 return roundTo(notBeingCompacted.size() / (double) config.memtablePartitions, 3);
             } else {
+                double thresholdBytes = config.levelCompactionThreshold.apply(this) * config.maxSegmentSize;
                 double totalBytes = notBeingCompacted.stream().mapToLong(Segment::totalBytes).sum();
-                final double score = totalBytes / maxBytes();
+                final double score = totalBytes / thresholdBytes;
                 return roundTo(score, 3);
             }
         } finally {

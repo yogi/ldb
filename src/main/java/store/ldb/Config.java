@@ -27,11 +27,11 @@ public class Config {
                 withMemtablePartitions(6).
                 withCompressionType(compressionType).
                 withMaxSegmentSize(2 * MB).
-                withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
-                withNumLevels(3).
+                withLevelCompactionThreshold(level -> level.getNum() == 0 ? 4 : (int) Math.pow(5, level.getNum())).
+                withNumLevels(4).
                 withMaxBlockSize(100 * KB).
                 withMaxWalSize(4 * MB * config.memtablePartitions * compressionFactorEstimate).
-                withSleepBetweenCompactionsMs(100)
+                withSleepBetweenCompactionsMs(0)
                 ;
     }
 
