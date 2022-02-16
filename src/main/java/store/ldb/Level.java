@@ -296,7 +296,7 @@ public class Level {
         try {
             final List<Segment> notBeingCompacted = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
             if (num == 0) {
-                return roundTo(notBeingCompacted.size() / (2.0 * config.memtablePartitions), 3);
+                return roundTo(notBeingCompacted.size() / (double) config.memtablePartitions, 3);
             } else {
                 double totalBytes = notBeingCompacted.stream().mapToLong(Segment::totalBytes).sum();
                 final double score = totalBytes / maxBytes();
