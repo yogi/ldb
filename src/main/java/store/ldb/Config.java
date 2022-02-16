@@ -24,7 +24,7 @@ public class Config {
         final CompressionType compressionType = LZ4;
         int compressionFactorEstimate = List.of(LZ4, SNAPPY).contains(compressionType) ? 8 : 1;
         return config.
-                withMemtablePartitions(3).
+                withMemtablePartitions(6).
                 withCompressionType(compressionType).
                 withMaxSegmentSize(2 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() <= 0 ? 4 : (int) Math.pow(10, level.getNum())).
