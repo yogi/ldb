@@ -162,7 +162,7 @@ public class Ldb implements Store {
     }
 
     private class Throttler {
-        public static final int THRESHOLD = 2;
+        public static final double THRESHOLD = 1.5;
 
         private final AtomicBoolean throttling = new AtomicBoolean();
         private final AtomicLong lastChecked = new AtomicLong();
@@ -178,12 +178,10 @@ public class Ldb implements Store {
             if (System.currentTimeMillis() - lastChecked.get() > 1000) {
                 final double score = levels.get(0).getCompactionScore();
                 lastChecked.set(System.currentTimeMillis());
-                if (score <= THRESHOLD && throttling.get()) {
+                if (score <= THRESHOLD && throttling.compareAndExchange(true, false)) {
                     LOG.info("stop throttling, level0 score: {}", score);
-                    throttling.set(false);
-                } else if (score > THRESHOLD && !throttling.get()) {
+                } else if (score > THRESHOLD && !throttling.compareAndExchange(false, true)) {
                     LOG.info("start throttling, level0 score: {}", score);
-                    throttling.set(true);
                 }
             }
         }
