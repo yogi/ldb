@@ -28,7 +28,7 @@ public class Config {
                 withCompressionType(compressionType).
                 withMaxSegmentSize(2 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() == 0 ? 4 : (int) Math.pow(5, level.getNum())).
-                withNumLevels(4).
+                withNumLevels(5).
                 withMaxBlockSize(100 * KB).
                 withMaxWalSize(4 * MB * config.memtablePartitions * compressionFactorEstimate).
                 withSleepBetweenCompactionsMs(0)

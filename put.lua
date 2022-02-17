@@ -1,5 +1,5 @@
 counter = 0
-maxRand = 10000000
+maxRand = 1000000000
 
 math.randomseed(9) -- use predictable seed so that probeIds match in get.lua
 

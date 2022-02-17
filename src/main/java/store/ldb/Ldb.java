@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
@@ -27,6 +28,7 @@ public class Ldb implements Store {
     private volatile TreeMap<String, String> memtable;
     private volatile WriteAheadLog wal;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private Throttler throttler;
 
     public Ldb(String dir) {
         this(dir, Config.defaultConfig());
@@ -39,6 +41,7 @@ public class Ldb implements Store {
         this.wal = WriteAheadLog.init(dir, levels.get(0));
         this.compactor = new Compactor(levels, config);
         this.memtable = new TreeMap<>();
+        this.throttler = new Throttler();
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
     }
 
@@ -56,6 +59,7 @@ public class Ldb implements Store {
         assertKeySize(key);
         assertValueSize(value);
         key = DigestUtils.sha256Hex(key);
+        throttler.throttle();
         lock.writeLock().lock();
         try {
             wal.append(new SetCmd(key, value));
@@ -155,5 +159,33 @@ public class Ldb implements Store {
                 "dir='" + dir + '\'' +
                 ", levels=" + levels +
                 '}';
+    }
+
+    private class Throttler {
+        public static final int THRESHOLD = 2;
+
+        private final AtomicBoolean throttling = new AtomicBoolean();
+        private final AtomicLong lastChecked = new AtomicLong();
+
+        public void throttle() {
+            if (throttling.get()) {
+                try {
+                    Thread.sleep(1);
+                } catch (InterruptedException e) {
+                    // ignore
+                }
+            }
+            if (System.currentTimeMillis() - lastChecked.get() > 1000) {
+                final double score = levels.get(0).getCompactionScore();
+                lastChecked.set(System.currentTimeMillis());
+                if (score <= THRESHOLD && throttling.get()) {
+                    LOG.info("stop throttling, level0 score: {}", score);
+                    throttling.set(false);
+                } else if (score > THRESHOLD && !throttling.get()) {
+                    LOG.info("start throttling, level0 score: {}", score);
+                    throttling.set(true);
+                }
+            }
+        }
     }
 }
