@@ -289,13 +289,23 @@ public class Level {
     public double getCompactionScore() {
         lock.readLock().lock();
         try {
-            final List<Segment> notBeingCompacted = segments.stream().filter(segment -> !segment.isMarkedForCompaction()).collect(Collectors.toList());
+            // not using streams api because its showing up as a bottleneck in the profiler
+            final List<Segment> notBeingCompacted = new ArrayList<>();
+            for (Segment seg : segments) {
+                if (!seg.isMarkedForCompaction()) {
+                    notBeingCompacted.add(seg);
+                }
+            }
             if (num == 0) {
                 return roundTo(notBeingCompacted.size() / (double) config.memtablePartitions, 3);
             } else {
+                // not using streams api because its showing up as a bottleneck in the profiler
+                long totalBytes = 0L;
+                for (Segment segment : notBeingCompacted) {
+                    totalBytes += segment.totalBytes();
+                }
                 double thresholdBytes = config.levelCompactionThreshold.apply(this) * config.maxSegmentSize;
-                double totalBytes = notBeingCompacted.stream().mapToLong(Segment::totalBytes).sum();
-                final double score = totalBytes / thresholdBytes;
+                final double score = (double) totalBytes / thresholdBytes;
                 return roundTo(score, 3);
             }
         } finally {
