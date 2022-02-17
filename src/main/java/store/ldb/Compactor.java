@@ -36,7 +36,6 @@ public class Compactor {
     private void prioritize() {
         LOG.info("compaction thread started");
         while (!stop.get()) {
-            if (stop.get()) break;
             try {
                 final Optional<LevelCompactor> lc = pickCompactor();
                 lc.ifPresent(levelCompactor -> {
