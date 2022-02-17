@@ -31,7 +31,7 @@ public class Config {
                 withNumLevels(6).
                 withMaxBlockSize(100 * KB).
                 withMaxWalSize(4 * MB * config.memtablePartitions * compressionFactorEstimate).
-                withSleepBetweenCompactionsMs(0)
+                withSleepBetweenCompactionsMs(1)
                 ;
     }
 
