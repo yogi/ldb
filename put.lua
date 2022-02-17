@@ -1,7 +1,6 @@
-counter = 0
-maxRand = 1000000000
+require "common"
 
-math.randomseed(9) -- use predictable seed so that probeIds match in get.lua
+counter = 0
 
 request = function()
     wrk.method = "PUT"
