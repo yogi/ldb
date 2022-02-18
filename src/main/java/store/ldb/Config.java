@@ -17,7 +17,7 @@ public class Config {
     public int maxBlockSize;
     public int maxWalSize;
     public long sleepBetweenCompactionsMs;
-    public int memtablePartitions;
+    public int memtablePartitions = 1;
 
     public static Config defaultConfig() {
         final Config config = new Config();
