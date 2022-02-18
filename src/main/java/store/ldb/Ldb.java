@@ -101,9 +101,7 @@ public class Ldb implements Store {
      * Package access only for tests, should not be called without a lock
      */
     void flushMemtable() {
-        if (writeSegmentInProgress.get()) return;
-
-        writeSegmentInProgress.set(true);
+        if (writeSegmentInProgress.compareAndExchange(false, true)) return;
 
         WriteAheadLog oldWal = wal;
         TreeMap<String, String> oldMemtable = memtable;
