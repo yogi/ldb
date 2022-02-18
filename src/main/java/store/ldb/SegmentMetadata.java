@@ -93,4 +93,8 @@ class SegmentMetadata {
     public int keyCount() {
         return 0;
     }
+
+    public int blockDataLength() {
+        return blockIndexOffset;
+    }
 }

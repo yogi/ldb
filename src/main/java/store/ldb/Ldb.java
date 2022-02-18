@@ -58,7 +58,7 @@ public class Ldb implements Store {
     public void set(String key, String value) {
         assertKeySize(key);
         assertValueSize(value);
-        key = DigestUtils.sha256Hex(key);
+        key = randomize(key);
         throttler.throttle();
         lock.writeLock().lock();
         try {
@@ -70,9 +70,13 @@ public class Ldb implements Store {
         }
     }
 
+    private String randomize(String key) {
+        return config.randomizedKeys ? DigestUtils.sha256Hex(key) : key;
+    }
+
     public Optional<String> get(String key) {
         assertKeySize(key);
-        key = DigestUtils.sha256Hex(key);
+        key = randomize(key);
         lock.readLock().lock();
         try {
             if (memtable.containsKey(key)) {

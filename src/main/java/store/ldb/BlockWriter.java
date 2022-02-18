@@ -10,17 +10,19 @@ class BlockWriter {
     private final List<KeyValueEntry> entries = new ArrayList<>();
     private final Config config;
     private int totalBytes;
+    private Segment segment;
 
-    public BlockWriter(Config config) {
+    public BlockWriter(Config config, Segment segment) {
         this.config = config;
+        this.segment = segment;
     }
 
-    public Block writeTo(DataOutputStream os, int offset, String fileName) {
+    public Block writeTo(DataOutputStream os, int offset) {
         try {
             byte[] data = compress(entries);
             os.write(data);
             os.flush();
-            return new Block(entries.get(0).getKey(), offset, data.length, config.compressionType, fileName);
+            return new Block(entries.get(0).getKey(), offset, data.length, config.compressionType, segment);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

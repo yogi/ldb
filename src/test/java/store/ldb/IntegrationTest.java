@@ -42,6 +42,7 @@ public class IntegrationTest {
                         .withNumLevels(3)
                         .withMaxBlockSize(VALUE_SIZE * 20)
                         .withCompressionType(CompressionType.NONE)
+                        .withRandomizedKeys(false)
                         .withSleepBetweenCompactionsMs(0));
         store.startCompactor();
 
@@ -69,7 +70,7 @@ public class IntegrationTest {
                         if (key == null) break;
                         final String value = store.get(key).orElseThrow(() -> new AssertionError(format("key %s not found", key)));
                         assertTrue(value.startsWith(key + "_"));
-                        if (counter.get() % 100 == 0) System.out.println("counter = " + counter);
+                        if (counter.get() % (MAX_KEYS / 10) == 0) System.out.println("counter = " + counter);
                     } catch (InterruptedException e) {
                         System.out.println("caught exception in reader thread: " + e);
                         throw new RuntimeException(e);
@@ -89,7 +90,7 @@ public class IntegrationTest {
         assertFalse(fail.get());
     }
 
-    @Test
+    //@Test()
     public void testGets() {
         int expectedEntries = 3000000;
 

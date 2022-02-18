@@ -5,8 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
@@ -25,6 +27,8 @@ public class Segment {
     private final AtomicBoolean markedForCompaction = new AtomicBoolean();
     private final SegmentWriter writer;
     private SegmentMetadata metadata;
+    private volatile ByteBuffer data;
+    private final ReentrantLock dataLock = new ReentrantLock();
 
     public Segment(File dir, int num, Config config) {
         this.num = num;
@@ -138,7 +142,7 @@ public class Segment {
             }
 
             if (blockWriter == null) {
-                blockWriter = new BlockWriter(config);
+                blockWriter = new BlockWriter(config, Segment.this);
             }
 
             blockWriter.addEntry(entry);
@@ -153,7 +157,7 @@ public class Segment {
 
         private void flushBlockWriter() {
             LOG.debug("flushing block for {}", fileName);
-            Block block = blockWriter.writeTo(os, offset, fileName);
+            Block block = blockWriter.writeTo(os, offset);
             offset += block.length;
             blocks.add(block);
             blockWriter = null;
@@ -190,7 +194,7 @@ public class Segment {
     public void load() throws IOException {
         assertNotReady();
         metadata = SegmentMetadata.load(fileName);
-        blocks = Block.loadBlocks(metadata.blockIndexOffset, metadata.offset, fileName);
+        blocks = Block.loadBlocks(metadata.blockIndexOffset, metadata.offset, fileName, this);
     }
 
     private void assertReady() {
@@ -221,6 +225,32 @@ public class Segment {
             }
         }
         return Optional.empty(); // can happen only at Level0
+    }
+
+    public ByteBuffer getData() {
+        if (data == null) {
+            // double-checked locking with data declared as volatile
+            // ref: https://www.cs.cornell.edu/courses/cs6120/2019fa/blog/double-checked-locking/
+            dataLock.lock();
+            try {
+                if (data == null) {
+                    try (BufferedInputStream is = new BufferedInputStream(new FileInputStream(fileName))) {
+                        byte[] bytes = new byte[metadata.blockDataLength()];
+                        int read = is.read(bytes);
+                        if (read != bytes.length) {
+                            throw new IOException(format("read %d bytes vs %d for %s", read, bytes.length, this));
+                        }
+                        data = ByteBuffer.wrap(bytes);
+                        return data;
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            } finally {
+                dataLock.unlock();
+            }
+        }
+        return data;
     }
 
     public int getNum() {

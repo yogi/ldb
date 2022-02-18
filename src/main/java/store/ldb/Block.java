@@ -3,6 +3,7 @@ package store.ldb;
 import org.apache.commons.io.input.CountingInputStream;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -14,14 +15,14 @@ class Block {
     final int length;
     final String startKey;
     private final CompressionType compressionType;
-    private final String filename;
+    private final Segment segment;
 
-    public Block(String startKey, int offset, int length, CompressionType compressionType, String filename) {
+    public Block(String startKey, int offset, int length, CompressionType compressionType, Segment segment) {
         this.startKey = startKey;
         this.offset = offset;
         this.length = length;
         this.compressionType = compressionType;
-        this.filename = filename;
+        this.segment = segment;
     }
 
     public static int writeIndex(DataOutputStream os, List<Block> blocks) {
@@ -46,16 +47,16 @@ class Block {
         return Short.BYTES + block.startKey.length() + Integer.BYTES + Integer.BYTES + Byte.BYTES;
     }
 
-    private static Block readIndexEntry(String fileName, DataInputStream is) throws IOException {
+    private static Block readIndexEntry(DataInputStream is, Segment segment) throws IOException {
         short startKeyLen = is.readShort();
         String startKey = new String(is.readNBytes(startKeyLen));
         int blockOffset = is.readInt();
         int blockLength = is.readInt();
         CompressionType compression = CompressionType.fromCode(is.readByte());
-        return new Block(startKey, blockOffset, blockLength, compression, fileName);
+        return new Block(startKey, blockOffset, blockLength, compression, segment);
     }
 
-    public static List<Block> loadBlocks(long offset, long uptoOffset, String fileName) {
+    public static List<Block> loadBlocks(long offset, long uptoOffset, String fileName, Segment segment) {
         try (CountingInputStream countingStream = new CountingInputStream(new BufferedInputStream(new FileInputStream(fileName)));
              DataInputStream is = new DataInputStream(countingStream)) {
             final long skippedTo = is.skip(offset);
@@ -64,7 +65,7 @@ class Block {
             }
             List<Block> blocks = new ArrayList<>();
             while (countingStream.getCount() < uptoOffset) {
-                blocks.add(readIndexEntry(fileName, is));
+                blocks.add(readIndexEntry(is, segment));
             }
             if (countingStream.getCount() != uptoOffset) {
                 throw new IllegalStateException(format("unexpected block bytes read: %d != %s", countingStream.getCount(), uptoOffset));
@@ -76,11 +77,12 @@ class Block {
     }
 
     public Optional<String> get(String key) {
-        try (DataInputStream is = new DataInputStream(new BufferedInputStream(new ByteArrayInputStream(uncompress())))) {
-            while (is.available() > 0) {
-                final KeyValueEntry entry = KeyValueEntry.readFrom(is);
-                if (key.equals(entry.getKey())) {
-                    return Optional.of(entry.getValue());
+        try {
+            ByteBuffer blockBytes = ByteBuffer.wrap(uncompress());
+            while(blockBytes.hasRemaining()) {
+                Optional<KeyValueEntry> entry = KeyValueEntry.getIfMatches(blockBytes, key);
+                if (entry.isPresent()) {
+                    return Optional.of(entry.get().getValue());
                 }
             }
             return Optional.empty();
@@ -102,12 +104,15 @@ class Block {
     }
 
     private byte[] uncompress() throws IOException {
-        try (RandomAccessFile f = new RandomAccessFile(filename, "r")) {
-            f.seek(offset);
+        try (DataInputStream is = new DataInputStream(new BufferedInputStream(new ByteArrayInputStream(segment.getData().array())))) {
+            long read = is.skip(offset);
+            if (read != offset) {
+                throw new IOException(format("skipped %d bytes vs %d for block %s", read, offset, this));
+            }
             byte[] bytes = new byte[length];
-            final int read = f.read(bytes);
+            read = is.read(bytes);
             if (read != length) {
-                throw new IOException(format("read %d bytes vs expected %d for block", read, length));
+                throw new IOException(format("read %d bytes vs %d for block %s", read, length, this));
             }
             return compressionType.uncompress(bytes);
         }

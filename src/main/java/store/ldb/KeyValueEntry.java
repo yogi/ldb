@@ -3,6 +3,8 @@ package store.ldb;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static java.lang.String.format;
@@ -51,6 +53,41 @@ public class KeyValueEntry {
         }
 
         return new KeyValueEntry(metadata, key, valBytes);
+    }
+
+    public static KeyValueEntry readFrom(ByteBuffer buf) throws IOException {
+        byte metadata = buf.get();
+
+        short keyLen = buf.getShort();
+        byte[] keyBytes = new byte[keyLen];
+        buf.get(keyBytes);
+        String key = new String(keyBytes);
+
+        short valLen = buf.getShort();
+        byte[] valBytes = new byte[valLen];
+        buf.get(valBytes);
+
+        return new KeyValueEntry(metadata, key, valBytes);
+    }
+
+    public static Optional<KeyValueEntry> getIfMatches(ByteBuffer buf, String matchKey) throws IOException {
+        int originalPos = buf.position();
+
+        byte metadata = buf.get();
+
+        short keyLen = buf.getShort();
+        byte[] keyBytes = new byte[keyLen];
+        buf.get(keyBytes);
+        String actualKey = new String(keyBytes);
+
+        if (actualKey.equals(matchKey)) {
+            buf.position(originalPos);
+            return Optional.of(readFrom(buf));
+        } else {
+            short valLen = buf.getShort();
+            buf.position(buf.position() + valLen);
+        }
+        return Optional.empty();
     }
 
     public KeyValueEntry(byte metadata, String key, String value) {
