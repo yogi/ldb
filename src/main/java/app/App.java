@@ -33,7 +33,8 @@ public class App extends Jooby {
     }
 
     private Object getLatestEvent(Context ctx) {
-        Optional<String> event = store.get(ctx.path().get("probeId").value());
+        final String probeId = ctx.path().get("probeId").value();
+        Optional<String> event = store.get(probeId);
         if (event.isPresent()) {
             return event.get();
         }
