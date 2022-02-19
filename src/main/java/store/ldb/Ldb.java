@@ -9,10 +9,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
@@ -25,10 +24,9 @@ public class Ldb implements Store {
     private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
     public final Config config;
     private final Compactor compactor;
-    private volatile TreeMap<String, String> memtable;
+    private volatile ConcurrentSkipListMap<String, String> memtable;
     private volatile WriteAheadLog wal;
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private Throttler throttler;
+    private final Throttler throttler;
 
     public Ldb(String dir) {
         this(dir, Config.defaultConfig());
@@ -40,7 +38,7 @@ public class Ldb implements Store {
         this.levels = Level.loadLevels(dir, config);
         this.wal = WriteAheadLog.init(dir, levels.get(0));
         this.compactor = new Compactor(levels, config);
-        this.memtable = new TreeMap<>();
+        this.memtable = new ConcurrentSkipListMap<>();
         this.throttler = new Throttler();
         Segment.resetCache(config.segmentCacheSize);
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
@@ -61,14 +59,9 @@ public class Ldb implements Store {
         assertValueSize(value);
         key = randomize(key);
         throttler.throttle();
-        lock.writeLock().lock();
-        try {
-            wal.append(new SetCmd(key, value));
-            memtable.put(key, value);
-            writeSegmentIfNeeded();
-        } finally {
-            lock.writeLock().unlock();
-        }
+        wal.append(new SetCmd(key, value));
+        memtable.put(key, value);
+        writeSegmentIfNeeded();
     }
 
     private String randomize(String key) {
@@ -78,22 +71,17 @@ public class Ldb implements Store {
     public Optional<String> get(String key) {
         assertKeySize(key);
         key = randomize(key);
-        lock.readLock().lock();
-        try {
-            if (memtable.containsKey(key)) {
-                LOG.debug("get found {} in memtable", key);
-                return Optional.of(memtable.get(key));
-            }
-            for (Level level : levels.values()) {
-                Optional<String> value = level.get(key);
-                if (value.isPresent()) {
-                    return value;
-                }
-            }
-            return Optional.empty();
-        } finally {
-            lock.readLock().unlock();
+        if (memtable.containsKey(key)) {
+            LOG.debug("get found {} in memtable", key);
+            return Optional.of(memtable.get(key));
         }
+        for (Level level : levels.values()) {
+            Optional<String> value = level.get(key);
+            if (value.isPresent()) {
+                return value;
+            }
+        }
+        return Optional.empty();
     }
 
     private void writeSegmentIfNeeded() {
@@ -109,11 +97,11 @@ public class Ldb implements Store {
         if (writeSegmentInProgress.compareAndExchange(false, true)) return;
 
         WriteAheadLog oldWal = wal;
-        TreeMap<String, String> oldMemtable = memtable;
+        ConcurrentSkipListMap<String, String> oldMemtable = memtable;
 
         LOG.debug("wal threshold crossed, init new wal and memtable before flushing old one {}", oldWal);
         wal = WriteAheadLog.startNext();
-        memtable = new TreeMap<>();
+        memtable = new ConcurrentSkipListMap<>();
 
         LOG.debug("flush segment from memtable for wal {}", oldWal);
         try {
@@ -132,9 +120,7 @@ public class Ldb implements Store {
         stats.put("db.keys", levels.values().stream().mapToLong(Level::keyCount).sum());
         stats.put("db.totalBytes", levels.values().stream().mapToLong(Level::totalBytes).sum());
         stats.put("segmentCache", Segment.cacheStats());
-        levels.values().forEach(level -> {
-            level.addStats(stats);
-        });
+        levels.values().forEach(level -> level.addStats(stats));
         return stats.entrySet().stream().map(Object::toString).collect(Collectors.joining("\n"));
     }
 

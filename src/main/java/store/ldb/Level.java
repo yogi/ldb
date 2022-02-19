@@ -125,7 +125,7 @@ public class Level {
         }
     }
 
-    public void flushMemtable(TreeMap<String, String> memtable) {
+    public void flushMemtable(SortedMap<String, String> memtable) {
         final List<Map.Entry<String, String>> original = new ArrayList<>(memtable.entrySet());
         final List<List<Map.Entry<String, String>>> partitions = original.size() < config.memtablePartitions ?
                 List.of(original) :

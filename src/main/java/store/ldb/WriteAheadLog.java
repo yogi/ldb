@@ -69,7 +69,7 @@ public class WriteAheadLog {
         }
     }
 
-    public void stop() {
+    public synchronized void stop() {
         try {
             os.close();
         } catch (IOException e) {
@@ -77,7 +77,7 @@ public class WriteAheadLog {
         }
     }
 
-    public void delete() {
+    public synchronized void delete() {
         LOG.debug("delete {}", walFileName());
         File file = new File(walFileName());
         if (file.exists()) {
@@ -123,7 +123,7 @@ public class WriteAheadLog {
         }
     }
 
-    public void append(SetCmd cmd) {
+    public synchronized void append(SetCmd cmd) {
         try {
             LOG.trace("append {} to {}", cmd.key, walFileName());
             KeyValueEntry entry = new KeyValueEntry((byte) CmdType.Set.code, cmd.key, cmd.value);
