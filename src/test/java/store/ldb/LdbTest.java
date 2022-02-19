@@ -1,23 +1,20 @@
-package app;
+package store.ldb;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import store.ldb.CompressionType;
-import store.ldb.Config;
-import store.ldb.Ldb;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class LdbTest {
     private final File basedir = new File("tmp/ldb");
@@ -38,6 +35,34 @@ public class LdbTest {
     @AfterEach
     void tearDown() {
         if (store != null) store.stop();
+    }
+
+    @Test
+    public void testThrottler() {
+        AtomicBoolean threshold = new AtomicBoolean(true);
+        Ldb.Throttler throttler = new Ldb.Throttler(threshold::get);
+
+        throttler.checkThreshold();
+        assertTrue(throttler.throttling.get());
+        assertEquals(1, throttler.sleepDuration);
+
+        throttler.checkThreshold();
+        assertTrue(throttler.throttling.get());
+        assertEquals(2, throttler.sleepDuration);
+
+        threshold.set(false);
+
+        throttler.checkThreshold();
+        assertTrue(throttler.throttling.get());
+        assertEquals(1, throttler.sleepDuration);
+
+        throttler.checkThreshold();
+        assertFalse(throttler.throttling.get());
+        assertEquals(1, throttler.sleepDuration);
+
+        throttler.checkThreshold();
+        assertFalse(throttler.throttling.get());
+        assertEquals(1, throttler.sleepDuration);
     }
 
     @Test

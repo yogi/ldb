@@ -12,7 +12,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
@@ -40,7 +40,7 @@ public class Ldb implements Store {
         this.wal = WriteAheadLog.init(dir, levels.get(0));
         this.compactor = new Compactor(levels, config);
         this.memtable = new ConcurrentSkipListMap<>();
-        this.throttler = new Throttler();
+        this.throttler = new Throttler(() -> levels.get(0).getCompactionScore() > 1.5);
         Segment.resetCache(config.segmentCacheSize);
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
     }
@@ -138,27 +138,54 @@ public class Ldb implements Store {
                 '}';
     }
 
-    private class Throttler {
-        public static final double THRESHOLD = 1.5;
+    static class Throttler {
+        final AtomicBoolean throttling = new AtomicBoolean();
+        int sleepDuration = 1;
+        private final Supplier<Boolean> thresholdCheck;
 
-        private final AtomicBoolean throttling = new AtomicBoolean();
-        private final AtomicLong lastChecked = new AtomicLong();
+        public Throttler(Supplier<Boolean> thresholdCheck) {
+            this.thresholdCheck = thresholdCheck;
+            Thread thread = new Thread(() -> {
+                while (true) {
+                    try {
+                        Thread.sleep(1000);
+                        checkThreshold();
+                    } catch (InterruptedException e) {
+                        // ignore
+                    }
+                }
+            });
+            thread.setDaemon(true);
+            thread.start();
+        }
+
+        void checkThreshold() {
+            boolean breached = thresholdCheck.get();
+            if (!breached && throttling.get()) {
+                if (sleepDuration > 1) {
+                    LOG.info("decrease throttling sleep duration to {}", sleepDuration);
+                    sleepDuration -= 1;
+                } else {
+                    LOG.info("stop throttling");
+                    throttling.set(false);
+                }
+            } else if (breached) {
+                if (throttling.get()) {
+                    LOG.info("increase throttling sleep duration to {}", sleepDuration);
+                    sleepDuration = Math.min(sleepDuration + 1, 5);
+                } else {
+                    LOG.info("start throttling");
+                    throttling.set(true);
+                }
+            }
+        }
 
         public void throttle() {
             if (throttling.get()) {
                 try {
-                    Thread.sleep(1);
+                    Thread.sleep(sleepDuration);
                 } catch (InterruptedException e) {
                     // ignore
-                }
-            }
-            if (System.currentTimeMillis() - lastChecked.get() > 1000) {
-                final double score = levels.get(0).getCompactionScore();
-                lastChecked.set(System.currentTimeMillis());
-                if (score <= THRESHOLD && throttling.compareAndExchange(true, false)) {
-                    LOG.info("stop throttling, level0 score: {}", score);
-                } else if (score > THRESHOLD && !throttling.compareAndExchange(false, true)) {
-                    LOG.info("start throttling, level0 score: {}", score);
                 }
             }
         }
