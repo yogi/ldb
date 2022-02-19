@@ -1,4 +1,24 @@
-maxRand = 1000000000
+maxrange = 1000000
+range = 1
 
-math.randomseed(9) -- use predictable seed so that probeIds match in get.lua
---math.randomseed(os.time()) -- use predictable seed so that probeIds match in get.lua
+function init(args)
+    seed = args[1] and args[1] or "randomSeed"
+    range = args[2] and tonumber(args[2]) or maxrange
+
+    if (seed == "randomSeed")
+    then
+        io.write("randomSeed: os.time(), range: " .. range .. "\n")
+        math.randomseed(os.time())
+    elseif (seed == "fixedSeed")
+    then
+        io.write("fixedSeed: 9, range: " .. range .. "\n")
+        math.randomseed(9) --seed it with any number for predictable math.random()
+    else
+        error("invalid arguments")
+    end
+end
+
+function randomProbeId()
+    return math.random(1, range)
+end
+

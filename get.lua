@@ -6,7 +6,7 @@ request = function()
     wrk.method = "GET"
     counter = (counter + 1)
     count = tostring(counter)
-    pid = math.random(1, maxRand)
+    pid = randomProbeId()
     probeId = "PRB" .. pid
     path = "/probe/" .. probeId .. "/latest"
     --io.write(string.format("probe %s %d\n", probeId, counter))
