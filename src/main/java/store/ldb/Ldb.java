@@ -131,6 +131,7 @@ public class Ldb implements Store {
         stats.put("memtable.size", memtable.size());
         stats.put("db.keys", levels.values().stream().mapToLong(Level::keyCount).sum());
         stats.put("db.totalBytes", levels.values().stream().mapToLong(Level::totalBytes).sum());
+        stats.put("segmentCache", Segment.cacheStats());
         levels.values().forEach(level -> {
             level.addStats(stats);
         });

@@ -1,9 +1,6 @@
 package store.ldb;
 
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.cache.Weigher;
+import com.google.common.cache.*;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,6 +64,7 @@ public class Segment {
                 .newBuilder()
                 .maximumWeight(segmentCacheSize)
                 .weigher((Weigher<Segment, ByteBuffer>) (segment, buf) -> segment.metadata.blockDataLength())
+                .recordStats()
                 .build(CacheLoader.from(segment -> {
                     try (BufferedInputStream is = new BufferedInputStream(new FileInputStream(segment.fileName))) {
                         byte[] bytes = new byte[segment.metadata.blockDataLength()];
@@ -79,6 +77,10 @@ public class Segment {
                         throw new RuntimeException(e);
                     }
                 }));
+    }
+
+    public static CacheStats cacheStats() {
+        return dataCache.stats();
     }
 
     public void writeMemtable(List<Map.Entry<String, String>> memtable) {
