@@ -1,5 +1,9 @@
 package store.ldb;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.cache.Weigher;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,8 +11,8 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
@@ -19,6 +23,8 @@ public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
     public static final int LDB_MARKER = 1279541793;
 
+    private static LoadingCache<Segment, ByteBuffer> dataCache;
+
     final int num;
     final String fileName;
     private final Config config;
@@ -27,8 +33,6 @@ public class Segment {
     private final AtomicBoolean markedForCompaction = new AtomicBoolean();
     private final SegmentWriter writer;
     private SegmentMetadata metadata;
-    private volatile ByteBuffer data;
-    private final ReentrantLock dataLock = new ReentrantLock();
 
     public Segment(File dir, int num, Config config) {
         this.num = num;
@@ -56,6 +60,25 @@ public class Segment {
             segment.delete();
             return null;
         }
+    }
+
+    public static void resetCache(int segmentCacheSize) {
+        dataCache = CacheBuilder
+                .newBuilder()
+                .maximumWeight(segmentCacheSize)
+                .weigher((Weigher<Segment, ByteBuffer>) (segment, buf) -> segment.metadata.blockDataLength())
+                .build(CacheLoader.from(segment -> {
+                    try (BufferedInputStream is = new BufferedInputStream(new FileInputStream(segment.fileName))) {
+                        byte[] bytes = new byte[segment.metadata.blockDataLength()];
+                        int read = is.read(bytes);
+                        if (read != bytes.length) {
+                            throw new IOException(format("read %d bytes vs %d for %s", read, bytes.length, segment));
+                        }
+                        return ByteBuffer.wrap(bytes);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }));
     }
 
     public void writeMemtable(List<Map.Entry<String, String>> memtable) {
@@ -228,29 +251,11 @@ public class Segment {
     }
 
     public ByteBuffer getData() {
-        if (data == null) {
-            // double-checked locking with data declared as volatile
-            // ref: https://www.cs.cornell.edu/courses/cs6120/2019fa/blog/double-checked-locking/
-            dataLock.lock();
-            try {
-                if (data == null) {
-                    try (BufferedInputStream is = new BufferedInputStream(new FileInputStream(fileName))) {
-                        byte[] bytes = new byte[metadata.blockDataLength()];
-                        int read = is.read(bytes);
-                        if (read != bytes.length) {
-                            throw new IOException(format("read %d bytes vs %d for %s", read, bytes.length, this));
-                        }
-                        data = ByteBuffer.wrap(bytes);
-                        return data;
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            } finally {
-                dataLock.unlock();
-            }
+        try {
+            return dataCache.get(this);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
         }
-        return data;
     }
 
     public int getNum() {
@@ -261,7 +266,7 @@ public class Segment {
         return metadata.keyCount;
     }
 
-    public long totalBytes() {
+    public int totalBytes() {
         return metadata.totalBytes;
     }
 

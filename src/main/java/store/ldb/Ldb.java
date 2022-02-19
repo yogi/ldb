@@ -42,6 +42,7 @@ public class Ldb implements Store {
         this.compactor = new Compactor(levels, config);
         this.memtable = new TreeMap<>();
         this.throttler = new Throttler();
+        Segment.resetCache(config.segmentCacheSize);
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
     }
 

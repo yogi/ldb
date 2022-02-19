@@ -19,6 +19,7 @@ public class Config {
     public long sleepBetweenCompactionsMs;
     public int memtablePartitions = 1;
     public boolean randomizedKeys = true;
+    public int segmentCacheSize;
 
     public static Config defaultConfig() {
         final Config config = new Config();
@@ -28,6 +29,7 @@ public class Config {
                 withMemtablePartitions(6).
                 withCompressionType(compressionType).
                 withMaxSegmentSize(2 * MB).
+                withSegmentCacheSize(100 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() == 0 ? 4 : (int) Math.pow(5, level.getNum())).
                 withNumLevels(6).
                 withRandomizedKeys(true).
@@ -47,6 +49,11 @@ public class Config {
                 ", maxWalSize=" + maxWalSize +
                 ", sleepBetweenCompactionsMs=" + sleepBetweenCompactionsMs +
                 '}';
+    }
+
+    private Config withSegmentCacheSize(int sizeBytes) {
+        segmentCacheSize = sizeBytes;
+        return this;
     }
 
     public Config withMemtablePartitions(int memtablePartitions) {
