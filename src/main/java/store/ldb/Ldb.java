@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import store.Store;
 
+import java.nio.ByteBuffer;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -89,8 +90,9 @@ public class Ldb implements Store {
             LOG.debug("get found {} in memtable", key);
             return Optional.of(memtable.get(key));
         }
+        final ByteBuffer keyBuf = ByteBuffer.wrap(key.getBytes());
         for (Level level : levels.values()) {
-            Optional<String> value = level.get(key);
+            Optional<String> value = level.get(key, keyBuf);
             if (value.isPresent()) {
                 return value;
             }

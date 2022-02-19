@@ -238,11 +238,11 @@ public class Segment {
         return StringUtils.isWithinRange(key, getMinKey(), getMaxKey());
     }
 
-    public Optional<String> get(String key) {
+    public Optional<String> get(String key, ByteBuffer keyBuf) {
         assertReady();
         for (Block block : blocks) {
             if (isGreaterThanOrEqual(key, block.startKey)) {
-                Optional<String> value = block.get(key);
+                Optional<String> value = block.get(key, keyBuf);
                 if (value.isPresent()) {
                     LOG.debug("get() found key {} in {}", key, this);
                     return value;

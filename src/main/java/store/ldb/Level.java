@@ -5,14 +5,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
-import static store.ldb.StringUtils.*;
+import static store.ldb.StringUtils.isGreaterThan;
 import static store.ldb.Utils.roundTo;
 import static store.ldb.Utils.shouldNotGetHere;
 
@@ -26,10 +26,9 @@ public class Level {
     private final File dir;
     private final int num;
     private final Config config;
-    final TreeSet<Segment> segments;
+    final ConcurrentSkipListSet<Segment> segments;
     private final AtomicInteger nextSegmentNumber;
     private final Comparator<Segment> segmentComparator;
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private String maxCompactedKey;
 
     public Level(String dirName, int num, Comparator<Segment> segmentComparator, Config config) {
@@ -38,7 +37,7 @@ public class Level {
         this.num = num;
         this.dir = initDir(dirName, num);
         this.segmentComparator = segmentComparator;
-        this.segments = new TreeSet<>(segmentComparator);
+        this.segments = new ConcurrentSkipListSet<>(segmentComparator);
         Segment.loadAll(dir, config).forEach(this::addSegment);
         nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
         segments.forEach(segment -> LOG.info("level {} segment {}", num, segment));
@@ -65,22 +64,17 @@ public class Level {
     }
 
     public void addSegment(Segment segment) {
-        lock.writeLock().lock();
-        try {
-            if (segment.isReady()) {
-                throw new IllegalStateException("segment already ready: " + segment + " for level: " + this);
-            }
-            segment.markReady();
-            if (segments.contains(segment)) {
-                throw new IllegalStateException("segment already exists!: " + segment + " in " + segments);
-            }
-            if (!segments.add(segment)) {
-                throw new IllegalStateException(format("segment %s was not added to level %s\n", segment.fileName, dirPathName()));
-            }
-            if (num > 0) assertSegmentsAreNonOverlapping();
-        } finally {
-            lock.writeLock().unlock();
+        if (segment.isReady()) {
+            throw new IllegalStateException("segment already ready: " + segment + " for level: " + this);
         }
+        segment.markReady();
+        if (segments.contains(segment)) {
+            throw new IllegalStateException("segment already exists!: " + segment + " in " + segments);
+        }
+        if (!segments.add(segment)) {
+            throw new IllegalStateException(format("segment %s was not added to level %s\n", segment.fileName, dirPathName()));
+        }
+        if (num > 0) assertSegmentsAreNonOverlapping();
     }
 
     private void assertSegmentsAreNonOverlapping() {
@@ -109,20 +103,15 @@ public class Level {
         return levels;
     }
 
-    public Optional<String> get(String key) {
-        lock.readLock().lock();
-        try {
-            for (Segment segment : segments) {
-                if (!segment.isKeyInRange(key)) continue;
-                Optional<String> value = segment.get(key);
-                if (value.isPresent()) {
-                    return value;
-                }
+    public Optional<String> get(String key, ByteBuffer keyBuf) {
+        for (Segment segment : segments) {
+            if (!segment.isKeyInRange(key)) continue;
+            Optional<String> value = segment.get(key, keyBuf);
+            if (value.isPresent()) {
+                return value;
             }
-            return Optional.empty();
-        } finally {
-            lock.readLock().unlock();
         }
+        return Optional.empty();
     }
 
     public void flushMemtable(SortedMap<String, String> memtable) {
@@ -147,21 +136,11 @@ public class Level {
     }
 
     public long keyCount() {
-        lock.readLock().lock();
-        try {
-            return segments.stream().mapToLong(Segment::keyCount).sum();
-        } finally {
-            lock.readLock().unlock();
-        }
+        return segments.stream().mapToLong(Segment::keyCount).sum();
     }
 
     public long totalBytes() {
-        lock.readLock().lock();
-        try {
-            return segments.stream().mapToLong(Segment::totalBytes).sum();
-        } finally {
-            lock.readLock().unlock();
-        }
+        return segments.stream().mapToLong(Segment::totalBytes).sum();
     }
 
     public int getNum() {
@@ -169,15 +148,10 @@ public class Level {
     }
 
     public void removeSegment(Segment segment) {
-        lock.writeLock().lock();
-        try {
-            if (!segments.remove(segment)) {
-                throw new IllegalStateException("could not remove segment: " + segment);
-            }
-            segment.delete();
-        } finally {
-            lock.writeLock().unlock();
+        if (!segments.remove(segment)) {
+            throw new IllegalStateException("could not remove segment: " + segment);
         }
+        segment.delete();
     }
 
     @Override
@@ -186,34 +160,29 @@ public class Level {
     }
 
     List<Segment> getSegmentsForCompaction() {
-        lock.readLock().lock();
-        try {
-            List<Segment> list = segments.stream()
-                    .filter(segment -> !segment.isMarkedForCompaction())
-                    .collect(Collectors.toCollection(LinkedList::new));
+        List<Segment> list = segments.stream()
+                .filter(segment -> !segment.isMarkedForCompaction())
+                .collect(Collectors.toCollection(LinkedList::new));
 
-            Integer threshold = config.levelCompactionThreshold.apply(this);
-            if (list.size() < threshold) return List.of();
+        Integer threshold = config.levelCompactionThreshold.apply(this);
+        if (list.size() < threshold) return List.of();
 
-            if (this.getNum() == 0) {
-                // for level0 pick the oldest and add all overlapping ones for compaction
-                Collections.reverse(list);
-                Segment oldest = list.remove(0);
-                List<Segment> toCompact = new ArrayList<>();
-                toCompact.add(oldest);
-                List<Segment> overlappingSegments = getOverlappingSegments(list, oldest.getMinKey(), oldest.getMaxKey());
-                //overlappingSegments = overlappingSegments.subList(0, Math.min(overlappingSegments.size(), 10));
-                toCompact.addAll(overlappingSegments);
-                list = toCompact;
-            } else {
-                Segment nextSegment = getNextSegmentToCompact(list);
-                if (nextSegment == null) return List.of();
-                list = List.of(nextSegment);
-            }
-            return list;
-        } finally {
-            lock.readLock().unlock();
+        if (this.getNum() == 0) {
+            // for level0 pick the oldest and add all overlapping ones for compaction
+            Collections.reverse(list);
+            Segment oldest = list.remove(0);
+            List<Segment> toCompact = new ArrayList<>();
+            toCompact.add(oldest);
+            List<Segment> overlappingSegments = getOverlappingSegments(list, oldest.getMinKey(), oldest.getMaxKey());
+            //overlappingSegments = overlappingSegments.subList(0, Math.min(overlappingSegments.size(), 10));
+            toCompact.addAll(overlappingSegments);
+            list = toCompact;
+        } else {
+            Segment nextSegment = getNextSegmentToCompact(list);
+            if (nextSegment == null) return List.of();
+            list = List.of(nextSegment);
         }
+        return list;
     }
 
     private Segment getNextSegmentToCompact(List<Segment> nonEmptyListOfSegments) {
@@ -235,36 +204,26 @@ public class Level {
     }
 
     public List<Segment> getOverlappingSegments(Collection<Segment> list, String minKey, String maxKey) {
-        lock.readLock().lock();
-        try {
-            if (list == null) {
-                assertLevelIsKeySorted();
-                list = new ArrayList<>(this.segments);
-            }
-            return list.stream()
-                    .filter(segment -> segment.overlaps(minKey, maxKey))
-                    .collect(Collectors.toList());
-        } finally {
-            lock.readLock().unlock();
+        if (list == null) {
+            assertLevelIsKeySorted();
+            list = new ArrayList<>(this.segments);
         }
+        return list.stream()
+                .filter(segment -> segment.overlaps(minKey, maxKey))
+                .collect(Collectors.toList());
     }
 
     public SegmentSpan segmentSpan(String minKey, String maxKey) {
         assertLevelIsKeySorted();
-        lock.readLock().lock();
-        try {
-            int count = 0;
-            long size = 0;
-            for (Segment segment : this.segments) {
-                if (!segment.isMarkedForCompaction() && segment.overlaps(minKey, maxKey)) {
-                    count++;
-                    size += segment.totalBytes();
-                }
+        int count = 0;
+        long size = 0;
+        for (Segment segment : this.segments) {
+            if (!segment.isMarkedForCompaction() && segment.overlaps(minKey, maxKey)) {
+                count++;
+                size += segment.totalBytes();
             }
-            return new SegmentSpan(count, size, minKey, maxKey);
-        } finally {
-            lock.readLock().unlock();
         }
+        return new SegmentSpan(count, size, minKey, maxKey);
     }
 
     private void assertLevelIsKeySorted() {
@@ -278,38 +237,28 @@ public class Level {
     }
 
     public int segmentCount() {
-        lock.readLock().lock();
-        try {
-            return segments.size();
-        } finally {
-            lock.readLock().unlock();
-        }
+        return segments.size();
     }
 
     public double getCompactionScore() {
-        lock.readLock().lock();
-        try {
+        // not using streams api because its showing up as a bottleneck in the profiler
+        final List<Segment> notBeingCompacted = new ArrayList<>();
+        for (Segment seg : segments) {
+            if (!seg.isMarkedForCompaction()) {
+                notBeingCompacted.add(seg);
+            }
+        }
+        if (num == 0) {
+            return roundTo(notBeingCompacted.size() / (double) config.memtablePartitions, 3);
+        } else {
             // not using streams api because its showing up as a bottleneck in the profiler
-            final List<Segment> notBeingCompacted = new ArrayList<>();
-            for (Segment seg : segments) {
-                if (!seg.isMarkedForCompaction()) {
-                    notBeingCompacted.add(seg);
-                }
+            long totalBytes = 0L;
+            for (Segment segment : notBeingCompacted) {
+                totalBytes += segment.totalBytes();
             }
-            if (num == 0) {
-                return roundTo(notBeingCompacted.size() / (double) config.memtablePartitions, 3);
-            } else {
-                // not using streams api because its showing up as a bottleneck in the profiler
-                long totalBytes = 0L;
-                for (Segment segment : notBeingCompacted) {
-                    totalBytes += segment.totalBytes();
-                }
-                double thresholdBytes = config.levelCompactionThreshold.apply(this) * config.maxSegmentSize;
-                final double score = (double) totalBytes / thresholdBytes;
-                return roundTo(score, 3);
-            }
-        } finally {
-            lock.readLock().unlock();
+            double thresholdBytes = config.levelCompactionThreshold.apply(this) * config.maxSegmentSize;
+            final double score = (double) totalBytes / thresholdBytes;
+            return roundTo(score, 3);
         }
     }
 

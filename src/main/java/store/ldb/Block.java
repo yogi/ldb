@@ -76,11 +76,11 @@ class Block {
         }
     }
 
-    public Optional<String> get(String key) {
+    public Optional<String> get(String key, ByteBuffer keyBuf) {
         try {
             ByteBuffer blockBytes = ByteBuffer.wrap(uncompress());
             while(blockBytes.hasRemaining()) {
-                Optional<KeyValueEntry> entry = KeyValueEntry.getIfMatches(blockBytes, key);
+                Optional<KeyValueEntry> entry = KeyValueEntry.getIfMatches(blockBytes, keyBuf);
                 if (entry.isPresent()) {
                     return Optional.of(entry.get().getValue());
                 }

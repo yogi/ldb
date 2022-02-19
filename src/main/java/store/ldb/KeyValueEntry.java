@@ -70,20 +70,19 @@ public class KeyValueEntry {
         return new KeyValueEntry(metadata, key, valBytes);
     }
 
-    public static Optional<KeyValueEntry> getIfMatches(ByteBuffer buf, String matchKey) throws IOException {
+    public static Optional<KeyValueEntry> getIfMatches(ByteBuffer buf, ByteBuffer matchKey) throws IOException {
         int originalPos = buf.position();
 
         byte metadata = buf.get();
 
         short keyLen = buf.getShort();
-        byte[] keyBytes = new byte[keyLen];
-        buf.get(keyBytes);
-        String actualKey = new String(keyBytes);
+        ByteBuffer actualKey = buf.slice(buf.position(), keyLen);
 
         if (actualKey.equals(matchKey)) {
             buf.position(originalPos);
             return Optional.of(readFrom(buf));
         } else {
+            buf.position(buf.position() + keyLen);
             short valLen = buf.getShort();
             buf.position(buf.position() + valLen);
         }

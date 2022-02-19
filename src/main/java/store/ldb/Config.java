@@ -3,8 +3,7 @@ package store.ldb;
 import java.util.List;
 import java.util.function.Function;
 
-import static store.ldb.CompressionType.LZ4;
-import static store.ldb.CompressionType.SNAPPY;
+import static store.ldb.CompressionType.*;
 
 public class Config {
     public static final int KB = 1024;
@@ -23,7 +22,7 @@ public class Config {
 
     public static Config defaultConfig() {
         final Config config = new Config();
-        final CompressionType compressionType = LZ4;
+        final CompressionType compressionType = NONE;
         int compressionFactorEstimate = List.of(LZ4, SNAPPY).contains(compressionType) ? 8 : 1;
         return config.
                 withMemtablePartitions(6).
