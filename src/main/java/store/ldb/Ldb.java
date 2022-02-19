@@ -48,20 +48,34 @@ public class Ldb implements Store {
         compactor.start();
     }
 
-    public void stop() {
+    public synchronized void stop() {
         LOG.info("stop");
         wal.stop();
         compactor.stop();
     }
 
-    public void set(String key, String value) {
+    public synchronized void set(String key, String value) {
+        throttler.throttle();
         assertKeySize(key);
         assertValueSize(value);
         key = randomize(key);
-        throttler.throttle();
         wal.append(new SetCmd(key, value));
         memtable.put(key, value);
-        writeSegmentIfNeeded();
+
+        // flush memtable
+        if (wal.totalBytes() >= config.maxWalSize) {
+            WriteAheadLog oldWal = wal;
+            ConcurrentSkipListMap<String, String> oldMemtable = memtable;
+
+            LOG.debug("wal threshold crossed, init new wal and memtable before flushing old one {}", oldWal);
+            wal = WriteAheadLog.startNext();
+            memtable = new ConcurrentSkipListMap<>();
+
+            LOG.debug("flush segment from memtable for wal {}", oldWal);
+            oldWal.stop();
+            levels.get(0).flushMemtable(oldMemtable);
+            oldWal.delete();
+        }
     }
 
     private String randomize(String key) {
@@ -82,35 +96,6 @@ public class Ldb implements Store {
             }
         }
         return Optional.empty();
-    }
-
-    private void writeSegmentIfNeeded() {
-        if (wal.totalBytes() >= config.maxWalSize) {
-            flushMemtable();
-        }
-    }
-
-    /**
-     * Package access only for tests, should not be called without a lock
-     */
-    void flushMemtable() {
-        if (writeSegmentInProgress.compareAndExchange(false, true)) return;
-
-        WriteAheadLog oldWal = wal;
-        ConcurrentSkipListMap<String, String> oldMemtable = memtable;
-
-        LOG.debug("wal threshold crossed, init new wal and memtable before flushing old one {}", oldWal);
-        wal = WriteAheadLog.startNext();
-        memtable = new ConcurrentSkipListMap<>();
-
-        LOG.debug("flush segment from memtable for wal {}", oldWal);
-        try {
-            oldWal.stop();
-            levels.get(0).flushMemtable(oldMemtable);
-            oldWal.delete();
-        } finally {
-            writeSegmentInProgress.set(false);
-        }
     }
 
     @Override
