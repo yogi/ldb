@@ -22,7 +22,6 @@ public class Ldb implements Store {
 
     private final String dir;
     private final TreeMap<Integer, Level> levels;
-    private final AtomicBoolean writeSegmentInProgress = new AtomicBoolean(false);
     public final Config config;
     private final Compactor compactor;
     private volatile ConcurrentSkipListMap<String, String> memtable;
