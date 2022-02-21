@@ -148,7 +148,7 @@ public class Ldb implements Store {
             Thread thread = new Thread(() -> {
                 while (true) {
                     try {
-                        Thread.sleep(1000);
+                        Thread.sleep(2000);
                         checkThreshold();
                     } catch (InterruptedException e) {
                         // ignore
@@ -163,16 +163,16 @@ public class Ldb implements Store {
             boolean breached = thresholdCheck.get();
             if (!breached && throttling.get()) {
                 if (sleepDuration > 1) {
-                    LOG.info("decrease throttling sleep duration to {}", sleepDuration);
                     sleepDuration -= 1;
+                    LOG.info("decrease throttling sleep duration to {}", sleepDuration);
                 } else {
                     LOG.info("stop throttling");
                     throttling.set(false);
                 }
             } else if (breached) {
                 if (throttling.get()) {
-                    LOG.info("increase throttling sleep duration to {}", sleepDuration);
                     sleepDuration = Math.min(sleepDuration + 1, 5);
+                    LOG.info("increase throttling sleep duration to {}", sleepDuration);
                 } else {
                     LOG.info("start throttling");
                     throttling.set(true);
