@@ -28,14 +28,13 @@ public class Segment {
     private List<Block> blocks;
     private final AtomicBoolean ready = new AtomicBoolean(false);
     private final AtomicBoolean markedForCompaction = new AtomicBoolean();
-    private final SegmentWriter writer;
+    private SegmentWriter writer;
     private SegmentMetadata metadata;
 
     public Segment(File dir, int num, Config config) {
         this.num = num;
         this.config = config;
         this.fileName = dir.getPath() + File.separatorChar + "seg" + num;
-        this.writer = new SegmentWriter();
         LOG.debug("new segment: {}", fileName);
     }
 
@@ -87,13 +86,14 @@ public class Segment {
         assertNotReady();
         LOG.debug("write memtable to segment {}", fileName);
         for (Map.Entry<String, String> entry : memtable) {
-            writer.write(new KeyValueEntry((byte) 0, entry.getKey(), entry.getValue()));
+            getWriter().write(new KeyValueEntry((byte) 0, entry.getKey(), entry.getValue()));
         }
-        writer.done();
-        LOG.debug("done: write memtable to segment {}, {} keys, {} bytes in {} ms", fileName, metadata.keyCount(), metadata.totalBytes, writer.timeTaken());
+        getWriter().done();
+        LOG.debug("done: write memtable to segment {}, {} keys, {} bytes in {} ms", fileName, metadata.keyCount(), metadata.totalBytes, getWriter().timeTaken());
     }
 
     public SegmentWriter getWriter() {
+        if (writer == null) writer = new SegmentWriter();
         return writer;
     }
 
