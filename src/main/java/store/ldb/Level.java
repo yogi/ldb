@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -12,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
+import static org.apache.commons.lang3.exception.ExceptionUtils.hasCause;
 import static store.ldb.StringUtils.isGreaterThan;
 import static store.ldb.Utils.roundTo;
 import static store.ldb.Utils.shouldNotGetHere;
@@ -106,9 +108,17 @@ public class Level {
     public Optional<String> get(String key, ByteBuffer keyBuf) {
         for (Segment segment : segments) {
             if (!segment.isKeyInRange(key)) continue;
-            Optional<String> value = segment.get(key, keyBuf);
-            if (value.isPresent()) {
-                return value;
+            try {
+                Optional<String> value = segment.get(key, keyBuf);
+                if (value.isPresent()) {
+                    return value;
+                }
+            } catch (RuntimeException e) {
+                if (hasCause(e, FileNotFoundException.class)) {
+                    LOG.error("ignoring error in Segment.get(), which is caused by concurrent deletion of segment {} by compaction", segment, e);
+                } else {
+                    throw e;
+                }
             }
         }
         return Optional.empty();
