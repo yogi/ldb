@@ -17,16 +17,16 @@ public class Compactor {
     private final List<LevelCompactor> levelCompactors = new ArrayList<>();
     private final AtomicBoolean stop = new AtomicBoolean();
 
-    public Compactor(TreeMap<Integer, Level> levels, Config aConfig) {
-        config = aConfig;
+    public Compactor(TreeMap<Integer, Level> levels, Config config, Manifest manifest) {
+        this.config = config;
         for (int i = 0; i < levels.size() - 1; i++) {
             final Level level = levels.get(i);
             final Level nextLevel = levels.get(i + 1);
             final Level nextToNextLevel = (i + 2) < levels.size() ? levels.get(i + 2) : null;
-            LevelCompactor levelCompactor = new LevelCompactor(level, nextLevel, nextToNextLevel, config);
+            LevelCompactor levelCompactor = new LevelCompactor(level, nextLevel, nextToNextLevel, config, manifest);
             levelCompactors.add(levelCompactor);
         }
-        compactionThread = new Thread(this::prioritize, "compaction");
+        this.compactionThread = new Thread(this::prioritize, "compaction");
     }
 
     public void start() {
@@ -92,17 +92,19 @@ public class Compactor {
         private final Level nextLevel;
         private final Level nextToNextLevel;
         private final Config config;
+        private Manifest manifest;
 
         @Override
         public String toString() {
             return level.dirPathName();
         }
 
-        public LevelCompactor(Level level, Level nextLevel, Level nextToNextLevel, Config config) {
+        public LevelCompactor(Level level, Level nextLevel, Level nextToNextLevel, Config config, Manifest manifest) {
             this.level = level;
             this.nextLevel = nextLevel;
             this.nextToNextLevel = nextToNextLevel;
             this.config = config;
+            this.manifest = manifest;
         }
 
         public void runCompaction() {
@@ -127,11 +129,13 @@ public class Compactor {
 
             CompactionStatistics stats = new CompactionStatistics();
             long start = System.currentTimeMillis();
+            List<Segment> newlyCreated = new ArrayList<>();
             if (toBeCompacted.size() == 1) {
-                copySegment(toBeCompacted.get(0), nextLevel, stats);
+                copySegment(toBeCompacted.get(0), newlyCreated, nextLevel, stats);
             } else {
-                compactSegments(toBeCompacted, nextLevel, stats);
+                compactSegments(toBeCompacted, newlyCreated, nextLevel, stats);
             }
+            manifest.record(newlyCreated, toBeCompacted);
             fromSegments.forEach(level::removeSegment);
             overlappingSegments.forEach(nextLevel::removeSegment);
             final long timeTaken = System.currentTimeMillis() - start;
@@ -139,10 +143,11 @@ public class Compactor {
                     level.getNum(), fromSegments.size(), overlappingSegments.size(), stats.segmentsCreated, Utils.roundTo(stats.bytesWritten / 1024.0, 2), timeTaken, stats.keysRead, stats.keysWritten, abbreviate(minKey, 15), abbreviate(maxKey, 15));
         }
 
-        private void copySegment(Segment segment, Level nextLevel, CompactionStatistics stats) {
+        private void copySegment(Segment segment, List<Segment> newlyCreated, Level nextLevel, CompactionStatistics stats) {
             final Segment newSegment = nextLevel.createNextSegment();
             newSegment.copyFrom(segment);
             nextLevel.addSegment(newSegment);
+            newlyCreated.add(newSegment);
             stats.incrSegmentsCreated();
             stats.incrBytesWritten(segment.totalBytes());
         }
@@ -154,7 +159,7 @@ public class Compactor {
             return result;
         }
 
-        public void compactSegments(List<Segment> segments, Level toLevel, CompactionStatistics stats) {
+        public void compactSegments(List<Segment> segments, List<Segment> newlyCreated, Level toLevel, CompactionStatistics stats) {
             Segment segment = null;
             Segment.SegmentWriter writer = null;
             String minKey = null;
@@ -195,7 +200,7 @@ public class Compactor {
                             LOG.debug("!!! creating new segment after only 1 entry, writerFull: {}, spanCrossed: {} - nextToNextLevel {} for range {} - {}",
                                     nextToNextLevel, writerFull, spanThresholdCrossed, minKey, maxKey);
                         }
-                        flushSegment(toLevel, stats, segment, writer);
+                        flushSegment(toLevel, stats, segment, writer, newlyCreated);
                         segment = null;
                         writer = null;
                     }
@@ -212,13 +217,14 @@ public class Compactor {
             } while (true);
 
             if (segment != null) {
-                flushSegment(toLevel, stats, segment, writer);
+                flushSegment(toLevel, stats, segment, writer, newlyCreated);
             }
         }
 
-        private void flushSegment(Level toLevel, CompactionStatistics stats, Segment segment, Segment.SegmentWriter writer) {
+        private void flushSegment(Level toLevel, CompactionStatistics stats, Segment segment, Segment.SegmentWriter writer, List<Segment> newlyCreated) {
             writer.done();
             toLevel.addSegment(segment);
+            newlyCreated.add(segment);
             stats.incrSegmentsCreated();
             stats.incrBytesWritten(segment.totalBytes());
             stats.incrKeysWritten(writer.keyCount);

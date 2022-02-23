@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -12,6 +13,7 @@ public class WriteAheadLog {
     public static final Logger LOG = LoggerFactory.getLogger(WriteAheadLog.class);
     private static final AtomicInteger nextGen = new AtomicInteger();
     static String dir;
+    static Manifest manifest;
 
     final int gen;
     private DataOutputStream os;
@@ -27,14 +29,15 @@ public class WriteAheadLog {
         }
     }
 
-    public static WriteAheadLog init(String dirname, Level levelZero) {
+    public static WriteAheadLog init(String dirname, Level levelZero, Manifest manifest) {
         dir = dirname;
-        int maxGen = replayExistingOnStartup(levelZero);
-        nextGen.set(maxGen == 0 ? 0 : maxGen + 1);
+        WriteAheadLog.manifest = manifest;
+        replayExistingOnStartup(levelZero);
+        nextGen.set(0);
         return startNext();
     }
 
-    private static int replayExistingOnStartup(Level levelZero) {
+    private static void replayExistingOnStartup(Level levelZero) {
         LinkedList<WriteAheadLog> wals =
                 Arrays.stream(Objects.requireNonNull(new File(dir)
                                 .listFiles((dir1, name) -> name.startsWith("wal"))))
@@ -42,16 +45,19 @@ public class WriteAheadLog {
                         .sorted()
                         .map(WriteAheadLog::new)
                         .collect(Collectors.toCollection(LinkedList::new));
-        if (wals.isEmpty()) {
-            return 0;
-        }
-        TreeMap<String, String> memtable = new TreeMap<>();
+        if (wals.isEmpty()) return;
+        ConcurrentSkipListMap<String, String> memtable = new ConcurrentSkipListMap<>();
         wals.forEach(wal -> wal.replay(memtable));
+        flushAndDelete(wals, memtable, levelZero);
+    }
+
+    static void flushAndDelete(Collection<WriteAheadLog> wals, SortedMap<String, String> memtable, Level levelZero) {
+        wals.forEach(WriteAheadLog::stop);
         if (memtable.size() > 0) {
-            levelZero.flushMemtable(memtable);
+            List<Segment> segmentsCreated = levelZero.flushMemtable(memtable);
+            manifest.record(segmentsCreated, List.of());
         }
         wals.forEach(WriteAheadLog::delete);
-        return wals.getLast().gen;
     }
 
     private WriteAheadLog(int gen) {
@@ -71,7 +77,7 @@ public class WriteAheadLog {
 
     public void stop() {
         try {
-            os.close();
+            if (os != null) os.close();
         } catch (IOException e) {
             LOG.error("caught IOException when closing output stream, ignoring ", e);
         }

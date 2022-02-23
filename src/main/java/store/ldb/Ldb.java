@@ -6,10 +6,7 @@ import org.slf4j.LoggerFactory;
 import store.Store;
 
 import java.nio.ByteBuffer;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
@@ -20,6 +17,7 @@ import static java.lang.String.format;
 public class Ldb implements Store {
     public static final Logger LOG = LoggerFactory.getLogger(Ldb.class);
 
+    private final Manifest manifest;
     private final String dir;
     private final TreeMap<Integer, Level> levels;
     public final Config config;
@@ -35,9 +33,10 @@ public class Ldb implements Store {
     public Ldb(String dir, Config config) {
         this.config = config;
         this.dir = dir;
-        this.levels = Level.loadLevels(dir, config);
-        this.wal = WriteAheadLog.init(dir, levels.get(0));
-        this.compactor = new Compactor(levels, config);
+        this.manifest = new Manifest(dir);
+        this.levels = Level.loadLevels(dir, config, manifest);
+        this.wal = WriteAheadLog.init(dir, levels.get(0), manifest);
+        this.compactor = new Compactor(levels, config, manifest);
         this.memtable = new ConcurrentSkipListMap<>();
         this.throttler = new Throttler(() -> levels.get(0).getCompactionScore() > 1.5);
         Segment.resetCache(config.segmentCacheSize);
@@ -52,6 +51,7 @@ public class Ldb implements Store {
         LOG.info("stop");
         wal.stop();
         compactor.stop();
+        manifest.close();
     }
 
     public synchronized void set(String key, String value) {
@@ -72,9 +72,7 @@ public class Ldb implements Store {
             memtable = new ConcurrentSkipListMap<>();
 
             LOG.debug("flush segment from memtable for wal {}", oldWal);
-            oldWal.stop();
-            levels.get(0).flushMemtable(oldMemtable);
-            oldWal.delete();
+            WriteAheadLog.flushAndDelete(List.of(oldWal), oldMemtable, levels.get(0));
         }
     }
 
@@ -189,4 +187,5 @@ public class Ldb implements Store {
             }
         }
     }
+
 }

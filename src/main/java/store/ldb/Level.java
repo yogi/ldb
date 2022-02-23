@@ -31,14 +31,14 @@ public class Level {
     private final Comparator<Segment> segmentComparator;
     private String maxCompactedKey;
 
-    public Level(String dirName, int num, Comparator<Segment> segmentComparator, Config config) {
+    public Level(String dirName, int num, Comparator<Segment> segmentComparator, Config config, Manifest manifest) {
         this.config = config;
         LOG.info("create level: {}", num);
         this.num = num;
         this.dir = initDir(dirName, num);
         this.segmentComparator = segmentComparator;
         this.segments = new ConcurrentSkipListSet<>(segmentComparator);
-        Segment.loadAll(dir, config).forEach(this::addSegment);
+        Segment.loadAll(dir, config, manifest).forEach(this::addSegment);
         nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
         segments.forEach(segment -> LOG.info("level {} segment {}", num, segment));
     }
@@ -93,11 +93,11 @@ public class Level {
         return dir + File.separatorChar + "level" + num;
     }
 
-    static TreeMap<Integer, Level> loadLevels(String dir, Config config) {
+    static TreeMap<Integer, Level> loadLevels(String dir, Config config, Manifest manifest) {
         TreeMap<Integer, Level> levels = new TreeMap<>();
         for (int i = 0; i < config.numLevels; i++) {
             final Comparator<Segment> segmentComparator = i == 0 ? NUM_DESC_SEGMENT_COMPARATOR : KEY_ASC_SEGMENT_COMPARATOR;
-            Level level = new Level(dir, i, segmentComparator, config);
+            Level level = new Level(dir, i, segmentComparator, config, manifest);
             levels.put(i, level);
         }
         return levels;
@@ -114,17 +114,20 @@ public class Level {
         return Optional.empty();
     }
 
-    public void flushMemtable(SortedMap<String, String> memtable) {
+    public List<Segment> flushMemtable(SortedMap<String, String> memtable) {
         final List<Map.Entry<String, String>> original = new ArrayList<>(memtable.entrySet());
         final List<List<Map.Entry<String, String>>> partitions = original.size() < config.memtablePartitions ?
                 List.of(original) :
                 Lists.partition(original, original.size() / config.memtablePartitions);
+        List<Segment> segmentsCreated = new ArrayList<>();
         for (List<Map.Entry<String, String>> partition : partitions) {
             if (partition.isEmpty()) continue;
             Segment segment = createNextSegment();
             segment.writeMemtable(partition);
             addSegment(segment);
+            segmentsCreated.add(segment);
         }
+        return segmentsCreated;
     }
 
     private int nextSegmentNumber() {

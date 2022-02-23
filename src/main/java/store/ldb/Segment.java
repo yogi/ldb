@@ -38,12 +38,21 @@ public class Segment {
         LOG.debug("new segment: {}", fileName);
     }
 
-    public static List<Segment> loadAll(File dir, Config config) {
-        return Arrays.stream(Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg"))))
-                .map(file -> Integer.parseInt(file.getName().replace("seg", "")))
-                .map(n -> loadSegment(dir, n, config))
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+    public static List<Segment> loadAll(File dir, Config config, Manifest manifest) {
+        List<Segment> segments = new ArrayList<>();
+        for (File file : Objects.requireNonNull(dir.listFiles(pathname -> pathname.getName().startsWith("seg")))) {
+            Integer n = Integer.parseInt(file.getName().replace("seg", ""));
+            Segment segment = loadSegment(dir, n, config);
+            if (segment != null) {
+                if (manifest.contains(segment)) {
+                    segments.add(segment);
+                } else {
+                    LOG.info("deleting segment not in manifest: " + segment.fileName);
+                    segment.delete();
+                }
+            }
+        }
+        return segments;
     }
 
     private static Segment loadSegment(File dir, Integer n, Config config) {
@@ -52,7 +61,7 @@ public class Segment {
             segment.load();
             return segment;
         } catch (IOException e) {
-            LOG.info("deleting segment {} - caught exception: {}", segment, e.getMessage());
+            LOG.info("deleting invalid segment {} - caught exception: {}", segment, e.getMessage());
             segment.delete();
             return null;
         }

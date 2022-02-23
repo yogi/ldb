@@ -25,7 +25,7 @@ public class LdbTest {
     void setUp() throws IOException {
         deleteDataDir();
         defaultConfig = new Config()
-                .withCompressionType(CompressionType.LZ4)
+                .withCompressionType(CompressionType.NONE)
                 .withLevelCompactionThreshold((level) -> 1)
                 .withNumLevels(1)
                 .withMaxBlockSize(100)
@@ -116,11 +116,11 @@ public class LdbTest {
         store = new Ldb(basedir.getPath(), defaultConfig);
 
         assertEquals("a", store.get("1").orElseThrow());
-        assertFiles("wal2", "level0/seg0");
+        assertFiles("wal0", "level0/seg0");
 
         store.set("1", "b");
         assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal3", "level0/seg0", "level0/seg1");
+        assertFiles("wal1", "level0/seg0", "level0/seg1");
     }
 
     @Test
