@@ -7,23 +7,27 @@ import java.io.*;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static store.ldb.Utils.requireTrue;
 
 class Manifest {
     public static final Logger LOG = LoggerFactory.getLogger(Manifest.class);
 
+    private final File dir;
     private final Set<String> segments = new HashSet<>();
-    private final PrintWriter writer;
+    private PrintWriter writer;
+    private final File manifestFile;
+    private AtomicInteger linesAdded = new AtomicInteger();
 
     public Manifest(String dirName) {
-        File dir = new File(dirName);
-        File file = new File(manifestFilename(dirName));
+        dir = new File(dirName);
+        manifestFile = new File(manifestFilename(dirName));
 
         // init dir
         try {
             if (!dir.exists() && !dir.mkdirs()) throw new RuntimeException("couldn't create dir: " + dirName);
-            if (!file.exists()) requireTrue(file.createNewFile());
+            if (!manifestFile.exists()) requireTrue(manifestFile.createNewFile());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -57,6 +61,10 @@ class Manifest {
         return dirName + File.separatorChar + "manifest";
     }
 
+    private String snapshotFilename(String dirName) {
+        return dirName + File.separatorChar + "manifest";
+    }
+
     public synchronized boolean contains(Segment segment) {
         return segments.contains(segment.fileName);
     }
@@ -64,11 +72,37 @@ class Manifest {
     public synchronized void record(List<Segment> created, List<Segment> deleted) {
         for (Segment segment : created) {
             writer.println("+" + segment.fileName);
+            segments.add(segment.fileName);
+            linesAdded.incrementAndGet();
         }
         for (Segment segment : deleted) {
             writer.println("-" + segment.fileName);
+            segments.remove(segment.fileName);
+            linesAdded.incrementAndGet();
         }
         writer.flush();
+
+        if (linesAdded.get() > 1000) {
+            LOG.info("rewriting manifest");
+            linesAdded.set(0);
+            File newManifest = new File(snapshotFilename(dir.getPath()));
+            try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(newManifest)))) {
+                for (String s : segments) {
+                    pw.println("+" + s);
+                }
+            } catch (IOException e) {
+                LOG.error("ignoring error when trying to rewrite manifest file", e);
+            }
+
+            writer.flush();
+            writer.close();
+            requireTrue(newManifest.renameTo(manifestFile));
+            try {
+                writer = new PrintWriter(new BufferedWriter(new FileWriter(manifestFilename(dir.getPath()), true)));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     public void close() {
