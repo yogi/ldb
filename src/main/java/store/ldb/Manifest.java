@@ -19,6 +19,8 @@ class Manifest {
     public Manifest(String dirName) {
         File dir = new File(dirName);
         File file = new File(manifestFilename(dirName));
+
+        // init dir
         try {
             if (!dir.exists() && !dir.mkdirs()) throw new RuntimeException("couldn't create dir: " + dirName);
             if (!file.exists()) requireTrue(file.createNewFile());
@@ -26,6 +28,7 @@ class Manifest {
             throw new RuntimeException(e);
         }
 
+        // load manifest
         try {
             BufferedReader reader = new BufferedReader(new FileReader(manifestFilename(dirName)));
             String line;
@@ -42,6 +45,7 @@ class Manifest {
             LOG.error("ignoring exception loading manifest since it might be due to it not getting flushed in a crash: ", e);
         }
 
+        // init writer
         try {
             this.writer = new PrintWriter(new BufferedWriter(new FileWriter(manifestFilename(dirName), true)));
         } catch (IOException e) {
