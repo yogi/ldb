@@ -26,8 +26,11 @@ public class LdbTest {
         deleteDataDir();
         defaultConfig = new Config()
                 .withCompressionType(CompressionType.NONE)
+                .withMemtablePartitions(1)
+                .withRandomizedKeys(true)
                 .withLevelCompactionThreshold((level) -> 1)
                 .withNumLevels(1)
+                .withEnableThrottling(true)
                 .withMaxBlockSize(100)
                 .withMaxWalSize(1);
     }
@@ -40,29 +43,29 @@ public class LdbTest {
     @Test
     public void testThrottler() {
         AtomicBoolean threshold = new AtomicBoolean(true);
-        Ldb.Throttler throttler = new Ldb.Throttler(threshold::get);
+        Ldb.Throttler throttler = new Ldb.Throttler(defaultConfig, threshold::get);
 
         throttler.checkThreshold();
         assertTrue(throttler.throttling.get());
-        assertEquals(1, throttler.sleepDuration);
+        assertEquals(10000, throttler.sleepDurationNanos.get());
 
         throttler.checkThreshold();
         assertTrue(throttler.throttling.get());
-        assertEquals(2, throttler.sleepDuration);
+        assertEquals(20000, throttler.sleepDurationNanos.get());
 
         threshold.set(false);
 
         throttler.checkThreshold();
         assertTrue(throttler.throttling.get());
-        assertEquals(1, throttler.sleepDuration);
+        assertEquals(10000, throttler.sleepDurationNanos.get());
 
         throttler.checkThreshold();
         assertFalse(throttler.throttling.get());
-        assertEquals(1, throttler.sleepDuration);
+        assertEquals(10000, throttler.sleepDurationNanos.get());
 
         throttler.checkThreshold();
         assertFalse(throttler.throttling.get());
-        assertEquals(1, throttler.sleepDuration);
+        assertEquals(10000, throttler.sleepDurationNanos.get());
     }
 
     @Test
@@ -111,16 +114,16 @@ public class LdbTest {
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
-        assertFiles("wal1", "level0/seg0");
+        assertFiles("manifest", "wal1", "level0/seg0");
 
         store = new Ldb(basedir.getPath(), defaultConfig);
 
         assertEquals("a", store.get("1").orElseThrow());
-        assertFiles("wal0", "level0/seg0");
+        assertFiles("manifest", "wal0", "level0/seg0");
 
         store.set("1", "b");
         assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal1", "level0/seg0", "level0/seg1");
+        assertFiles("manifest", "wal1", "level0/seg0", "level0/seg1");
     }
 
     @Test
@@ -133,11 +136,11 @@ public class LdbTest {
 
         store.set("1", "a");
         assertEquals("a", store.get("1").orElseThrow());
-        assertFiles("wal1", "level0/seg0");
+        assertFiles("manifest", "wal1", "level0/seg0");
 
         store.runCompaction(0);
         assertEquals("a", store.get("1").orElseThrow());
-        assertFiles("wal1", "level1/seg0"); // no compactions below limit of 4 for level-0
+        assertFiles("manifest", "wal1", "level1/seg0"); // no compactions below limit of 4 for level-0
     }
 
     @Test
@@ -151,21 +154,21 @@ public class LdbTest {
         store.set("1", "a");
         store.set("1", "b");
         assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal2", "level0/seg0", "level0/seg1");
+        assertFiles("manifest", "wal2", "level0/seg0", "level0/seg1");
 
         store.runCompaction(0);
         assertEquals("b", store.get("1").orElseThrow());
-        assertFiles("wal2", "level0/seg0", "level0/seg1"); // no compactions below limit of 4 for level-0
+        assertFiles("manifest", "wal2", "level0/seg0", "level0/seg1"); // no compactions below limit of 4 for level-0
 
         store.set("1", "c");
         store.set("1", "d");
         store.set("1", "e");
         store.set("1", "f");
         assertEquals("f", store.get("1").orElseThrow());  // all level-0 ones should be picked for compactions
-        assertFiles("wal6", "level0/seg0", "level0/seg1", "level0/seg2", "level0/seg3", "level0/seg4", "level0/seg5"); // no compactions below limit of 4 for level-0
+        assertFiles("manifest", "wal6", "level0/seg0", "level0/seg1", "level0/seg2", "level0/seg3", "level0/seg4", "level0/seg5"); // no compactions below limit of 4 for level-0
 
         store.runCompaction(0);
-        assertFiles("wal6", "level1/seg0");
+        assertFiles("manifest", "wal6", "level1/seg0");
     }
 
     @Test
@@ -182,7 +185,7 @@ public class LdbTest {
         assertEquals("d", store.get("1").orElseThrow());
         store.runCompaction(1);
         assertEquals("d", store.get("1").orElseThrow());
-        assertFiles("wal4", "level2/seg0");
+        assertFiles("manifest", "wal4", "level2/seg0");
     }
 
     private void assertFiles(String... filenames) {

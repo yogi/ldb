@@ -2,6 +2,7 @@ package store.ldb;
 
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static store.ldb.CompressionType.*;
 
@@ -16,9 +17,10 @@ public class Config {
     public int maxBlockSize;
     public int maxWalSize;
     public long sleepBetweenCompactionsMs;
-    public int memtablePartitions = 1;
-    public boolean randomizedKeys = true;
+    public int memtablePartitions;
+    public boolean randomizedKeys;
     public int segmentCacheSize;
+    public boolean enableThrottling;
 
     public static Config defaultConfig() {
         final Config config = new Config();
@@ -34,23 +36,17 @@ public class Config {
                 withRandomizedKeys(true).
                 withMaxBlockSize(100 * KB * compressionFactorEstimate).
                 withMaxWalSize(4 * MB * config.memtablePartitions * compressionFactorEstimate).
-                withSleepBetweenCompactionsMs(1)
+                withSleepBetweenCompactionsMs(1).
+                withEnableThrottling(true)
                 ;
     }
 
-    @Override
-    public String toString() {
-        return "Config{" +
-                "compressionType=" + compressionType +
-                ", maxSegmentSize=" + maxSegmentSize +
-                ", numLevels=" + numLevels +
-                ", maxBlockSize=" + maxBlockSize +
-                ", maxWalSize=" + maxWalSize +
-                ", sleepBetweenCompactionsMs=" + sleepBetweenCompactionsMs +
-                '}';
+    public Config withEnableThrottling(boolean b) {
+        this.enableThrottling = b;
+        return this;
     }
 
-    private Config withSegmentCacheSize(int sizeBytes) {
+    public Config withSegmentCacheSize(int sizeBytes) {
         segmentCacheSize = sizeBytes;
         return this;
     }
@@ -98,5 +94,17 @@ public class Config {
     public Config withRandomizedKeys(boolean b) {
         randomizedKeys = b;
         return this;
+    }
+
+    @Override
+    public String toString() {
+        return "Config{" +
+                "compressionType=" + compressionType +
+                ", maxSegmentSize=" + maxSegmentSize +
+                ", numLevels=" + numLevels +
+                ", maxBlockSize=" + maxBlockSize +
+                ", maxWalSize=" + maxWalSize +
+                ", sleepBetweenCompactionsMs=" + sleepBetweenCompactionsMs +
+                '}';
     }
 }

@@ -8,7 +8,10 @@ import store.Store;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -38,7 +41,7 @@ public class Ldb implements Store {
         this.wal = WriteAheadLog.init(dir, levels.get(0), manifest);
         this.compactor = new Compactor(levels, config, manifest);
         this.memtable = new ConcurrentSkipListMap<>();
-        this.throttler = new Throttler(() -> levels.get(0).getCompactionScore() > 1.5);
+        this.throttler = new Throttler(config, () -> levels.get(0).getCompactionScore() > 2);
         Segment.resetCache(config.segmentCacheSize);
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
     }
@@ -136,51 +139,52 @@ public class Ldb implements Store {
     }
 
     static class Throttler {
+        public static final int MIN_SLEEP_NANOS = 10000;
+        public static final int SLEEP_INCREMENT_NANOS = 10000;
+        public static final int MAX_SLEEP_NANOS = 1000000;
+        public static final int ONE_MILLI_IN_NANOS = 1000000;
         final AtomicBoolean throttling = new AtomicBoolean();
-        int sleepDuration = 1;
+        final AtomicInteger sleepDurationNanos = new AtomicInteger(MIN_SLEEP_NANOS);
         private final Supplier<Boolean> thresholdCheck;
 
-        public Throttler(Supplier<Boolean> thresholdCheck) {
+        public Throttler(Config config, Supplier<Boolean> thresholdCheck) {
             this.thresholdCheck = thresholdCheck;
-            Thread thread = new Thread(() -> {
-                while (true) {
-                    try {
-                        Thread.sleep(2000);
-                        checkThreshold();
-                    } catch (InterruptedException e) {
-                        // ignore
-                    }
-                }
-            });
-            thread.setDaemon(true);
-            thread.start();
+            if (config.enableThrottling) {
+                new ScheduledThreadPoolExecutor(1).scheduleWithFixedDelay(this::checkThreshold, 0, 1, TimeUnit.SECONDS);
+            }
         }
 
         void checkThreshold() {
             boolean breached = thresholdCheck.get();
             if (!breached && throttling.get()) {
-                if (sleepDuration > 1) {
-                    sleepDuration -= 1;
-                    LOG.info("decrease throttling sleep duration to {}", sleepDuration);
+                if (sleepDurationNanos.get() > MIN_SLEEP_NANOS) {
+                    sleepDurationNanos.set(sleepDurationNanos.get() - SLEEP_INCREMENT_NANOS);
+                    LOG.info("decrease throttling sleep duration to {} ms", sleepDurationInMillis());
                 } else {
                     LOG.info("stop throttling");
                     throttling.set(false);
+                    sleepDurationNanos.set(MIN_SLEEP_NANOS);
                 }
             } else if (breached) {
                 if (throttling.get()) {
-                    sleepDuration = Math.min(sleepDuration + 1, 5);
-                    LOG.info("increase throttling sleep duration to {}", sleepDuration);
+                    sleepDurationNanos.set(Math.min(sleepDurationNanos.get() + SLEEP_INCREMENT_NANOS, MAX_SLEEP_NANOS));
+                    LOG.info("increase throttling sleep duration to {} ms", sleepDurationInMillis());
                 } else {
-                    LOG.info("start throttling");
+                    LOG.info("start throttling, sleep duration is {} ms", sleepDurationInMillis());
                     throttling.set(true);
                 }
             }
         }
 
+        private double sleepDurationInMillis() {
+            return sleepDurationNanos.get() / (double) ONE_MILLI_IN_NANOS;
+        }
+
         public void throttle() {
             if (throttling.get()) {
                 try {
-                    Thread.sleep(sleepDuration);
+                    final int nanos = sleepDurationNanos.get();
+                    Thread.sleep(nanos / ONE_MILLI_IN_NANOS, nanos % ONE_MILLI_IN_NANOS);
                 } catch (InterruptedException e) {
                     // ignore
                 }
