@@ -43,7 +43,7 @@ public class LdbTest {
     @Test
     public void testThrottler() {
         AtomicBoolean threshold = new AtomicBoolean(true);
-        Ldb.Throttler throttler = new Ldb.Throttler(defaultConfig, threshold::get);
+        Throttler throttler = new Throttler(defaultConfig, threshold::get);
 
         throttler.checkThreshold();
         assertTrue(throttler.throttling.get());
