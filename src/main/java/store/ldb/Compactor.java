@@ -14,18 +14,12 @@ public class Compactor {
 
     private final Config config;
     private final Thread compactionThread;
-    private final List<LevelCompactor> levelCompactors = new ArrayList<>();
+    private final List<LevelCompactor> levelCompactors;
     private final AtomicBoolean stop = new AtomicBoolean();
 
-    public Compactor(TreeMap<Integer, Level> levels, Config config, Manifest manifest) {
+    public Compactor(Levels levels, Config config, Manifest manifest) {
         this.config = config;
-        for (int i = 0; i < levels.size() - 1; i++) {
-            final Level level = levels.get(i);
-            final Level nextLevel = levels.get(i + 1);
-            final Level nextToNextLevel = (i + 2) < levels.size() ? levels.get(i + 2) : null;
-            LevelCompactor levelCompactor = new LevelCompactor(level, nextLevel, nextToNextLevel, config, manifest);
-            levelCompactors.add(levelCompactor);
-        }
+        this.levelCompactors = levels.createCompactors(config, manifest);
         this.compactionThread = new Thread(this::prioritize, "compaction");
     }
 

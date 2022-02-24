@@ -95,16 +95,6 @@ public class Level {
         return dir + File.separatorChar + "level" + num;
     }
 
-    static TreeMap<Integer, Level> loadLevels(String dir, Config config, Manifest manifest) {
-        TreeMap<Integer, Level> levels = new TreeMap<>();
-        for (int i = 0; i < config.numLevels; i++) {
-            final Comparator<Segment> segmentComparator = i == 0 ? NUM_DESC_SEGMENT_COMPARATOR : KEY_ASC_SEGMENT_COMPARATOR;
-            Level level = new Level(dir, i, segmentComparator, config, manifest);
-            levels.put(i, level);
-        }
-        return levels;
-    }
-
     public Optional<String> get(String key, ByteBuffer keyBuf) {
         for (Segment segment : segments) {
             if (!segment.isKeyInRange(key)) continue;
@@ -237,7 +227,7 @@ public class Level {
 
     private void assertLevelIsKeySorted() {
         if (!isKeySorted()) {
-            throw new IllegalStateException("can't get overlapping segments of a level thsi is not key sorted");
+            throw new IllegalStateException("can't get overlapping segments of a level this is not key sorted");
         }
     }
 

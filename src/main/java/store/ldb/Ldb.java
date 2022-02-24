@@ -16,7 +16,7 @@ public class Ldb implements Store {
 
     private final Manifest manifest;
     private final String dir;
-    private final TreeMap<Integer, Level> levels;
+    private final Levels levels;
     public final Config config;
     private final Compactor compactor;
     private volatile Memtable memtable;
@@ -31,11 +31,11 @@ public class Ldb implements Store {
         this.config = config;
         this.dir = dir;
         this.manifest = new Manifest(dir);
-        this.levels = Level.loadLevels(dir, config, manifest);
-        this.wal = WriteAheadLog.init(dir, levels.get(0), manifest);
+        this.levels = new Levels(dir, config, manifest);
+        this.wal = WriteAheadLog.init(dir, levels.levelZero(), manifest);
         this.compactor = new Compactor(levels, config, manifest);
         this.memtable = new Memtable();
-        this.throttler = new Throttler(config, () -> levels.get(0).getCompactionScore() > 2);
+        this.throttler = new Throttler(config, () -> levels.getCompactionScore() > 2);
         Segment.resetCache(config.segmentCacheSize);
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
     }
@@ -69,7 +69,7 @@ public class Ldb implements Store {
             memtable = new Memtable();
 
             LOG.debug("flush segment from memtable for wal {}", oldWal);
-            WriteAheadLog.flushAndDelete(List.of(oldWal), oldMemtable, levels.get(0));
+            WriteAheadLog.flushAndDelete(List.of(oldWal), oldMemtable, levels.levelZero());
         }
     }
 
@@ -85,23 +85,17 @@ public class Ldb implements Store {
             return Optional.of(memtable.get(key));
         }
         final ByteBuffer keyBuf = ByteBuffer.wrap(key.getBytes());
-        for (Level level : levels.values()) {
-            Optional<String> value = level.get(key, keyBuf);
-            if (value.isPresent()) {
-                return value;
-            }
-        }
-        return Optional.empty();
+        return levels.getValue(key, keyBuf);
     }
 
     @Override
     public String stats() {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("memtable.size", memtable.size());
-        stats.put("db.keys", levels.values().stream().mapToLong(Level::keyCount).sum());
-        stats.put("db.totalBytes", levels.values().stream().mapToLong(Level::totalBytes).sum());
+        stats.put("db.keys", levels.keyCount());
+        stats.put("db.totalBytes", levels.totalBytes());
         stats.put("segmentCache", Segment.cacheStats());
-        levels.values().forEach(level -> level.addStats(stats));
+        levels.addStats(stats);
         return stats.entrySet().stream().map(Object::toString).collect(Collectors.joining("\n"));
     }
 
