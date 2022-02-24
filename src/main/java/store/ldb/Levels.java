@@ -7,7 +7,6 @@ import static store.ldb.Level.KEY_ASC_SEGMENT_COMPARATOR;
 import static store.ldb.Level.NUM_DESC_SEGMENT_COMPARATOR;
 
 public class Levels {
-
     private final TreeMap<Integer, Level> levels;
 
     public Levels(String dir, Config config, Manifest manifest) {

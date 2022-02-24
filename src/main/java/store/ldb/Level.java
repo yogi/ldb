@@ -115,6 +115,7 @@ public class Level {
     }
 
     public List<Segment> flushMemtable(Memtable memtable) {
+        assertIsLevelZero();
         List<Segment> segmentsCreated = new ArrayList<>();
         for (List<Map.Entry<String, String>> partition : memtable.partitions(config.memtablePartitions)) {
             if (partition.isEmpty()) continue;
@@ -124,6 +125,10 @@ public class Level {
             segmentsCreated.add(segment);
         }
         return segmentsCreated;
+    }
+
+    private void assertIsLevelZero() {
+        if (num != 0) throw new AssertionError("operation allowed only in level0");
     }
 
     private int nextSegmentNumber() {

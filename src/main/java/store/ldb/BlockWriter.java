@@ -9,8 +9,8 @@ import java.util.List;
 class BlockWriter {
     private final List<KeyValueEntry> entries = new ArrayList<>();
     private final Config config;
+    private final Segment segment;
     private int totalBytes;
-    private Segment segment;
 
     public BlockWriter(Config config, Segment segment) {
         this.config = config;
