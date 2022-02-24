@@ -32,7 +32,8 @@ public class Ldb implements Store {
         this.dir = dir;
         this.manifest = new Manifest(dir);
         this.levels = new Levels(dir, config, manifest);
-        this.wal = WriteAheadLog.init(dir, levels.levelZero(), manifest);
+        WriteAheadLog.replayExistingOnStartup(dir, levels.levelZero(), manifest);
+        this.wal = new WriteAheadLog(0, dir, manifest);
         this.compactor = new Compactor(levels, config, manifest);
         this.memtable = new Memtable();
         this.throttler = new Throttler(config, () -> levels.getCompactionScore() > 2);
@@ -65,11 +66,11 @@ public class Ldb implements Store {
             Memtable oldMemtable = memtable;
 
             LOG.debug("wal threshold crossed, init new wal and memtable before flushing old one {}", oldWal);
-            wal = WriteAheadLog.startNext();
+            wal = wal.startNext();
             memtable = new Memtable();
 
             LOG.debug("flush segment from memtable for wal {}", oldWal);
-            WriteAheadLog.flushAndDelete(List.of(oldWal), oldMemtable, levels.levelZero());
+            WriteAheadLog.flushAndDelete(List.of(oldWal), oldMemtable, levels.levelZero(), manifest);
         }
     }
 

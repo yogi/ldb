@@ -10,12 +10,11 @@ import java.util.stream.Collectors;
 
 public class WriteAheadLog {
     public static final Logger LOG = LoggerFactory.getLogger(WriteAheadLog.class);
-    private static final AtomicInteger nextGen = new AtomicInteger();
-    static String dir;
-    static Manifest manifest;
 
-    final int gen;
-    private DataOutputStream os;
+    private final String dir;
+    private final Manifest manifest;
+    private final int gen;
+    private final DataOutputStream os;
     private final AtomicInteger totalBytes = new AtomicInteger();
 
     private enum CmdType {
@@ -28,29 +27,21 @@ public class WriteAheadLog {
         }
     }
 
-    public static WriteAheadLog init(String dirname, Level levelZero, Manifest manifest) {
-        dir = dirname;
-        WriteAheadLog.manifest = manifest;
-        replayExistingOnStartup(levelZero);
-        nextGen.set(0);
-        return startNext();
-    }
-
-    private static void replayExistingOnStartup(Level levelZero) {
+    static void replayExistingOnStartup(String dir, Level levelZero, Manifest manifest) {
         LinkedList<WriteAheadLog> wals =
                 Arrays.stream(Objects.requireNonNull(new File(dir)
                                 .listFiles((dir1, name) -> name.startsWith("wal"))))
                         .map(file -> Integer.parseInt(file.getName().replace("wal", "")))
                         .sorted()
-                        .map(WriteAheadLog::new)
+                        .map((Integer gen) -> new WriteAheadLog(gen, dir, manifest))
                         .collect(Collectors.toCollection(LinkedList::new));
         if (wals.isEmpty()) return;
         Memtable memtable = new Memtable();
         wals.forEach(wal -> wal.replay(memtable));
-        flushAndDelete(wals, memtable, levelZero);
+        flushAndDelete(wals, memtable, levelZero, manifest);
     }
 
-    static void flushAndDelete(Collection<WriteAheadLog> wals, Memtable memtable, Level levelZero) {
+    static void flushAndDelete(Collection<WriteAheadLog> wals, Memtable memtable, Level levelZero, Manifest manifest) {
         wals.forEach(WriteAheadLog::stop);
         if (memtable.size() > 0) {
             List<Segment> segmentsCreated = levelZero.flushMemtable(memtable);
@@ -59,16 +50,13 @@ public class WriteAheadLog {
         wals.forEach(WriteAheadLog::delete);
     }
 
-    private WriteAheadLog(int gen) {
-        this.gen = gen;
-        LOG.debug("create {}", walFileName());
-    }
-
-    private void start() {
-        FileOutputStream fos;
+    WriteAheadLog(Integer gen, String dirname, Manifest manifest) {
         try {
-            fos = new FileOutputStream(walFileName(), true);
-            this.os = new DataOutputStream(new BufferedOutputStream(fos, 1024 * 8));
+            this.gen = gen;
+            this.dir = dirname;
+            this.manifest = manifest;
+            this.os = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(walFileName(), true), 1024 * 8));
+            LOG.debug("create {}", walFileName());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -96,14 +84,12 @@ public class WriteAheadLog {
         return totalBytes.get();
     }
 
-    public static WriteAheadLog startNext() {
-        final WriteAheadLog wal = new WriteAheadLog(nextGen.getAndIncrement());
-        wal.start();
-        return wal;
+    public WriteAheadLog startNext() {
+        return new WriteAheadLog(gen + 1, dir, manifest);
     }
 
     private String walFileName() {
-        return dir + File.separatorChar + "wal" + gen;
+        return dir + File.separatorChar + "wal" + this.gen;
     }
 
     void replay(Memtable memtable) {
