@@ -124,13 +124,9 @@ public class Level {
         return Optional.empty();
     }
 
-    public List<Segment> flushMemtable(SortedMap<String, String> memtable) {
-        final List<Map.Entry<String, String>> original = new ArrayList<>(memtable.entrySet());
-        final List<List<Map.Entry<String, String>>> partitions = original.size() < config.memtablePartitions ?
-                List.of(original) :
-                Lists.partition(original, original.size() / config.memtablePartitions);
+    public List<Segment> flushMemtable(Memtable memtable) {
         List<Segment> segmentsCreated = new ArrayList<>();
-        for (List<Map.Entry<String, String>> partition : partitions) {
+        for (List<Map.Entry<String, String>> partition : memtable.partitions(config.memtablePartitions)) {
             if (partition.isEmpty()) continue;
             Segment segment = createNextSegment();
             segment.writeMemtable(partition);
@@ -279,9 +275,7 @@ public class Level {
         stats.put(dirPathName() + ".segments", segmentCount());
         stats.put(dirPathName() + ".keyCount", keyCount());
         stats.put(dirPathName() + ".totalBytes", totalBytes());
-        segments.forEach(segment -> {
-            stats.put(segment.fileName, segment);
-        });
+        segments.forEach(segment -> stats.put(segment.fileName, segment));
     }
 
     record SegmentSpan(int count, long size, String minKey, String maxKey) {

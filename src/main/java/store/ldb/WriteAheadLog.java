@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -46,12 +45,12 @@ public class WriteAheadLog {
                         .map(WriteAheadLog::new)
                         .collect(Collectors.toCollection(LinkedList::new));
         if (wals.isEmpty()) return;
-        ConcurrentSkipListMap<String, String> memtable = new ConcurrentSkipListMap<>();
+        Memtable memtable = new Memtable();
         wals.forEach(wal -> wal.replay(memtable));
         flushAndDelete(wals, memtable, levelZero);
     }
 
-    static void flushAndDelete(Collection<WriteAheadLog> wals, SortedMap<String, String> memtable, Level levelZero) {
+    static void flushAndDelete(Collection<WriteAheadLog> wals, Memtable memtable, Level levelZero) {
         wals.forEach(WriteAheadLog::stop);
         if (memtable.size() > 0) {
             List<Segment> segmentsCreated = levelZero.flushMemtable(memtable);
@@ -107,7 +106,7 @@ public class WriteAheadLog {
         return dir + File.separatorChar + "wal" + gen;
     }
 
-    void replay(SortedMap<String, String> memtable) {
+    void replay(Memtable memtable) {
         File file = new File(walFileName());
         if (!file.exists() || file.length() == 0) {
             return;

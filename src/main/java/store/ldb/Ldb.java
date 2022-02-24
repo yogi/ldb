@@ -7,7 +7,6 @@ import store.Store;
 
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -25,7 +24,7 @@ public class Ldb implements Store {
     private final TreeMap<Integer, Level> levels;
     public final Config config;
     private final Compactor compactor;
-    private volatile ConcurrentSkipListMap<String, String> memtable;
+    private volatile Memtable memtable;
     private volatile WriteAheadLog wal;
     private final Throttler throttler;
 
@@ -40,7 +39,7 @@ public class Ldb implements Store {
         this.levels = Level.loadLevels(dir, config, manifest);
         this.wal = WriteAheadLog.init(dir, levels.get(0), manifest);
         this.compactor = new Compactor(levels, config, manifest);
-        this.memtable = new ConcurrentSkipListMap<>();
+        this.memtable = new Memtable();
         this.throttler = new Throttler(config, () -> levels.get(0).getCompactionScore() > 2);
         Segment.resetCache(config.segmentCacheSize);
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
@@ -68,11 +67,11 @@ public class Ldb implements Store {
         // flush memtable
         if (wal.totalBytes() >= config.maxWalSize) {
             WriteAheadLog oldWal = wal;
-            ConcurrentSkipListMap<String, String> oldMemtable = memtable;
+            Memtable oldMemtable = memtable;
 
             LOG.debug("wal threshold crossed, init new wal and memtable before flushing old one {}", oldWal);
             wal = WriteAheadLog.startNext();
-            memtable = new ConcurrentSkipListMap<>();
+            memtable = new Memtable();
 
             LOG.debug("flush segment from memtable for wal {}", oldWal);
             WriteAheadLog.flushAndDelete(List.of(oldWal), oldMemtable, levels.get(0));
@@ -86,7 +85,7 @@ public class Ldb implements Store {
     public Optional<String> get(String key) {
         assertKeySize(key);
         key = randomize(key);
-        if (memtable.containsKey(key)) {
+        if (memtable.contains(key)) {
             LOG.debug("get found {} in memtable", key);
             return Optional.of(memtable.get(key));
         }
