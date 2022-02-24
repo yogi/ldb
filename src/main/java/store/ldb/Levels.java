@@ -3,17 +3,13 @@ package store.ldb;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-import static store.ldb.Level.KEY_ASC_SEGMENT_COMPARATOR;
-import static store.ldb.Level.NUM_DESC_SEGMENT_COMPARATOR;
-
 public class Levels {
     private final TreeMap<Integer, Level> levels;
 
     public Levels(String dir, Config config, Manifest manifest) {
         levels = new TreeMap<>();
         for (int i = 0; i < config.numLevels; i++) {
-            final Comparator<Segment> segmentComparator = i == 0 ? NUM_DESC_SEGMENT_COMPARATOR : KEY_ASC_SEGMENT_COMPARATOR;
-            Level level = new Level(dir, i, segmentComparator, config, manifest);
+            Level level = new Level(dir, i, config, manifest);
             levels.put(i, level);
         }
     }

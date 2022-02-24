@@ -33,12 +33,12 @@ public class Level {
     private final Comparator<Segment> segmentComparator;
     private String maxCompactedKey;
 
-    public Level(String dirName, int num, Comparator<Segment> segmentComparator, Config config, Manifest manifest) {
+    public Level(String dirName, int num, Config config, Manifest manifest) {
         this.config = config;
         LOG.info("create level: {}", num);
         this.num = num;
         this.dir = initDir(dirName, num);
-        this.segmentComparator = segmentComparator;
+        this.segmentComparator = num == 0 ? NUM_DESC_SEGMENT_COMPARATOR : KEY_ASC_SEGMENT_COMPARATOR;
         this.segments = new ConcurrentSkipListSet<>(segmentComparator);
         Segment.loadAll(dir, config, manifest).forEach(this::addSegment);
         nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
