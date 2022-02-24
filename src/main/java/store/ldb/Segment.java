@@ -8,12 +8,14 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.lang.String.format;
 import static org.apache.commons.lang3.StringUtils.abbreviate;
-import static store.ldb.StringUtils.*;
+import static store.ldb.StringUtils.isGreaterThan;
+import static store.ldb.StringUtils.isLessThan;
 
 public class Segment {
     public static final Logger LOG = LoggerFactory.getLogger(Segment.class);
@@ -24,7 +26,7 @@ public class Segment {
     final int num;
     final String fileName;
     private final Config config;
-    private List<Block> blocks;
+    private ConcurrentSkipListMap<String, Block> blocks;
     private final AtomicBoolean ready = new AtomicBoolean(false);
     private final AtomicBoolean markedForCompaction = new AtomicBoolean();
     private SegmentWriter writer;
@@ -126,7 +128,7 @@ public class Segment {
     }
 
     public KeyValueEntryIterator keyValueEntryIterator() {
-        return new KeyValueEntryIterator(blocks);
+        return new KeyValueEntryIterator(blocks.values());
     }
 
     boolean overlaps(String minKey, String maxKey) {
@@ -168,7 +170,7 @@ public class Segment {
             LOG.trace("write key {} to block-writer for {}", entry.getKey(), Segment.this);
 
             if (blocks == null) {
-                blocks = new ArrayList<>();
+                blocks = new ConcurrentSkipListMap<>();
                 startTime = System.currentTimeMillis();
                 minKey = entry.getKey();
                 keyCount = 0;
@@ -192,7 +194,7 @@ public class Segment {
             LOG.debug("flushing block for {}", fileName);
             Block block = blockWriter.writeTo(os, offset);
             offset += block.length;
-            blocks.add(block);
+            blocks.put(block.startKey, block);
             blockWriter = null;
         }
 
@@ -204,7 +206,7 @@ public class Segment {
                 }
 
                 int blockIndexOffset = offset;
-                offset += Block.writeIndex(os, blocks);
+                offset += Block.writeIndex(os, blocks.values());
 
                 metadata = SegmentMetadata.writeTo(offset, blockIndexOffset, minKey, maxKey, keyCount, os);
                 os.close();
@@ -248,14 +250,13 @@ public class Segment {
 
     public Optional<String> get(String key, ByteBuffer keyBuf) {
         assertReady();
-        for (Block block : blocks) {
-            if (isGreaterThanOrEqual(key, block.startKey)) {
-                Optional<String> value = block.get(key, keyBuf);
-                if (value.isPresent()) {
-                    LOG.debug("get() found key {} in {}", key, this);
-                    return value;
-                }
-            }
+        final Map.Entry<String, Block> blockEntry = blocks.floorEntry(key);
+        if (blockEntry == null) return Optional.empty();
+        Block block = blockEntry.getValue();
+        Optional<String> value = block.get(key, keyBuf);
+        if (value.isPresent()) {
+            LOG.debug("get() found key {} in {}", key, this);
+            return value;
         }
         return Optional.empty(); // can happen only at Level0
     }

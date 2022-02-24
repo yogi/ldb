@@ -1,15 +1,12 @@
 package store.ldb;
 
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Queue;
+import java.util.*;
 
 class KeyValueEntryIterator implements Iterator<KeyValueEntry> {
     private final Queue<KeyValueEntry> entries;
     private final Iterator<Block> blockIterator;
 
-    public KeyValueEntryIterator(List<Block> blocks) {
+    public KeyValueEntryIterator(Collection<Block> blocks) {
         entries = new LinkedList<>();
         blockIterator = blocks.iterator();
     }

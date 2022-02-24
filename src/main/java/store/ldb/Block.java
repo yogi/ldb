@@ -5,8 +5,10 @@ import org.apache.commons.io.input.CountingInputStream;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.lang.String.format;
 
@@ -25,7 +27,7 @@ class Block {
         this.segment = segment;
     }
 
-    public static int writeIndex(DataOutputStream os, List<Block> blocks) {
+    public static int writeIndex(DataOutputStream os, Collection<Block> blocks) {
         try {
             int bytesWritten = 0;
             for (Block block : blocks) {
@@ -56,16 +58,17 @@ class Block {
         return new Block(startKey, blockOffset, blockLength, compression, segment);
     }
 
-    public static List<Block> loadBlocks(long offset, long uptoOffset, String fileName, Segment segment) {
+    public static ConcurrentSkipListMap<String, Block> loadBlocks(long offset, long uptoOffset, String fileName, Segment segment) {
         try (CountingInputStream countingStream = new CountingInputStream(new BufferedInputStream(new FileInputStream(fileName)));
              DataInputStream is = new DataInputStream(countingStream)) {
             final long skippedTo = is.skip(offset);
             if (skippedTo != offset) {
                 throw new IllegalStateException(format("skipped to %d instead of offset %d when loading blocks for segment %s", skippedTo, offset, fileName));
             }
-            List<Block> blocks = new ArrayList<>();
+            ConcurrentSkipListMap<String, Block> blocks = new ConcurrentSkipListMap<>();
             while (countingStream.getCount() < uptoOffset) {
-                blocks.add(readIndexEntry(is, segment));
+                final Block block = readIndexEntry(is, segment);
+                blocks.put(block.startKey, block);
             }
             if (countingStream.getCount() != uptoOffset) {
                 throw new IllegalStateException(format("unexpected block bytes read: %d != %s", countingStream.getCount(), uptoOffset));
