@@ -1,48 +1,39 @@
 package store.ldb;
 
-import com.google.common.collect.Lists;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
-import static org.apache.commons.lang3.exception.ExceptionUtils.hasCause;
 import static store.ldb.StringUtils.isGreaterThan;
-import static store.ldb.Utils.roundTo;
-import static store.ldb.Utils.shouldNotGetHere;
 
 public class Level {
     public static final Logger LOG = LoggerFactory.getLogger(Level.class);
-    public static final Comparator<Segment> NUM_DESC_SEGMENT_COMPARATOR = Comparator.comparing(Segment::getNum).reversed();
-    public static final Comparator<Segment> KEY_ASC_SEGMENT_COMPARATOR =
-            Comparator.comparing(Segment::getMinKey)
-                    .thenComparing(Segment::getNum);
 
     private final File dir;
     private final int num;
     private final Config config;
-    final ConcurrentSkipListSet<Segment> segments;
+    private final ConcurrentSkipListMap<Object, Segment> segments;
     private final AtomicInteger nextSegmentNumber;
-    private final Comparator<Segment> segmentComparator;
+    private final LevelType levelType;
     private String maxCompactedKey;
 
     public Level(String dirName, int num, Config config, Manifest manifest) {
-        this.config = config;
         LOG.info("create level: {}", num);
+        this.config = config;
         this.num = num;
         this.dir = initDir(dirName, num);
-        this.segmentComparator = num == 0 ? NUM_DESC_SEGMENT_COMPARATOR : KEY_ASC_SEGMENT_COMPARATOR;
-        this.segments = new ConcurrentSkipListSet<>(segmentComparator);
+        this.levelType = LevelType.of(num);
+        this.segments = new ConcurrentSkipListMap<>(levelType.comparator());
         Segment.loadAll(dir, config, manifest).forEach(this::addSegment);
-        nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments));
-        segments.forEach(segment -> LOG.info("level {} segment {}", num, segment));
+        nextSegmentNumber = new AtomicInteger(initNextSegmentNumber(segments.values()));
+        segments.values().forEach(segment -> LOG.info("level {} segment {}", num, segment));
     }
 
     private static int initNextSegmentNumber(Collection<Segment> segments) {
@@ -70,25 +61,14 @@ public class Level {
             throw new IllegalStateException("segment already ready: " + segment + " for level: " + this);
         }
         segment.markReady();
-        if (segments.contains(segment)) {
-            throw new IllegalStateException("segment already exists!: " + segment + " in " + segments);
+        if (segments.containsKey(levelType.key(segment))) {
+            throw new IllegalStateException("segment with key already exists!: " + segment + " in " + segments);
         }
-        if (!segments.add(segment)) {
-            throw new IllegalStateException(format("segment %s was not added to level %s\n", segment.fileName, dirPathName()));
+        final Segment prev = segments.put(levelType.key(segment), segment);
+        if (prev != null) {
+            throw new IllegalStateException(format("segment %s already added to level %s\n", segment.fileName, dirPathName()));
         }
-        if (num > 0) assertSegmentsAreNonOverlapping();
-    }
-
-    private void assertSegmentsAreNonOverlapping() {
-        final List<Segment> list = new ArrayList<>(new ArrayList<>(segments));
-        for (int i = 0; i < list.size() - 1; i++) {
-            Segment segment = list.get(i);
-            Segment nextSegment = list.get(i + 1);
-            if (segment.isMarkedForCompaction() || nextSegment.isMarkedForCompaction()) continue;
-            if (isGreaterThan(segment.getMaxKey(), nextSegment.getMinKey())) {
-                shouldNotGetHere(format("found overlapping segments %s, %s", segment, nextSegment));
-            }
-        }
+        levelType.assertSegmentInvariants(segments);
     }
 
     private static String levelDirName(String dir, int num) {
@@ -96,22 +76,7 @@ public class Level {
     }
 
     public Optional<String> get(String key, ByteBuffer keyBuf) {
-        for (Segment segment : segments) {
-            if (!segment.isKeyInRange(key)) continue;
-            try {
-                Optional<String> value = segment.get(key, keyBuf);
-                if (value.isPresent()) {
-                    return value;
-                }
-            } catch (RuntimeException e) {
-                if (hasCause(e, FileNotFoundException.class)) {
-                    LOG.error("ignoring error in Segment.get(), which is caused by concurrent deletion of segment {} by compaction", segment, e);
-                } else {
-                    throw e;
-                }
-            }
-        }
-        return Optional.empty();
+        return levelType.getValue(key, keyBuf, segments);
     }
 
     public List<Segment> flushMemtable(Memtable memtable) {
@@ -128,7 +93,7 @@ public class Level {
     }
 
     private void assertIsLevelZero() {
-        if (num != 0) throw new AssertionError("operation allowed only in level0");
+        if (levelType != LevelType.LEVEL_0) throw new AssertionError("operation allowed only in level0");
     }
 
     private int nextSegmentNumber() {
@@ -140,11 +105,11 @@ public class Level {
     }
 
     public long keyCount() {
-        return segments.stream().mapToLong(Segment::keyCount).sum();
+        return segments.values().stream().mapToLong(Segment::keyCount).sum();
     }
 
     public long totalBytes() {
-        return segments.stream().mapToLong(Segment::totalBytes).sum();
+        return segments.values().stream().mapToLong(Segment::totalBytes).sum();
     }
 
     public int getNum() {
@@ -152,9 +117,9 @@ public class Level {
     }
 
     public void removeSegment(Segment segment) {
-        if (!segments.remove(segment)) {
-            throw new IllegalStateException("could not remove segment: " + segment);
-        }
+        Segment prev = segments.remove(levelType.key(segment));
+        if (prev == null)
+            throw new IllegalStateException("could not remove segment, was not present in level: " + segment);
         segment.delete();
     }
 
@@ -164,7 +129,7 @@ public class Level {
     }
 
     List<Segment> getSegmentsForCompaction() {
-        List<Segment> list = segments.stream()
+        List<Segment> list = segments.values().stream()
                 .filter(segment -> !segment.isMarkedForCompaction())
                 .collect(Collectors.toCollection(LinkedList::new));
 
@@ -210,7 +175,7 @@ public class Level {
     public List<Segment> getOverlappingSegments(Collection<Segment> list, String minKey, String maxKey) {
         if (list == null) {
             assertLevelIsKeySorted();
-            list = new ArrayList<>(this.segments);
+            list = new ArrayList<>(this.segments.values());
         }
         return list.stream()
                 .filter(segment -> segment.overlaps(minKey, maxKey))
@@ -221,7 +186,7 @@ public class Level {
         assertLevelIsKeySorted();
         int count = 0;
         long size = 0;
-        for (Segment segment : this.segments) {
+        for (Segment segment : this.segments.values()) {
             if (!segment.isMarkedForCompaction() && segment.overlaps(minKey, maxKey)) {
                 count++;
                 size += segment.totalBytes();
@@ -237,7 +202,7 @@ public class Level {
     }
 
     private boolean isKeySorted() {
-        return KEY_ASC_SEGMENT_COMPARATOR == segmentComparator;
+        return levelType == LevelType.LEVEL_N;
     }
 
     public int segmentCount() {
@@ -246,34 +211,24 @@ public class Level {
 
     public double getCompactionScore() {
         // not using streams api because its showing up as a bottleneck in the profiler
-        final List<Segment> notBeingCompacted = new ArrayList<>();
-        for (Segment seg : segments) {
+        final List<Segment> segmentsNotBeingCompacted = new ArrayList<>();
+        for (Segment seg : segments.values()) {
             if (!seg.isMarkedForCompaction()) {
-                notBeingCompacted.add(seg);
+                segmentsNotBeingCompacted.add(seg);
             }
         }
-        if (num == 0) {
-            return roundTo(notBeingCompacted.size() / (double) config.memtablePartitions, 3);
-        } else {
-            // not using streams api because its showing up as a bottleneck in the profiler
-            long totalBytes = 0L;
-            for (Segment segment : notBeingCompacted) {
-                totalBytes += segment.totalBytes();
-            }
-            double thresholdBytes = config.levelCompactionThreshold.apply(this) * config.maxSegmentSize;
-            final double score = (double) totalBytes / thresholdBytes;
-            return roundTo(score, 3);
-        }
+        return levelType.getCompactionScore(segmentsNotBeingCompacted, config, this);
     }
 
     public void addStats(Map<String, Object> stats) {
         stats.put(dirPathName() + ".segments", segmentCount());
         stats.put(dirPathName() + ".keyCount", keyCount());
         stats.put(dirPathName() + ".totalBytes", totalBytes());
-        segments.forEach(segment -> stats.put(segment.fileName, segment));
+        segments.values().forEach(segment -> stats.put(segment.fileName, segment));
     }
 
     record SegmentSpan(int count, long size, String minKey, String maxKey) {
     }
+
 }
 
