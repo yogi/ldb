@@ -22,6 +22,7 @@ public class Ldb implements Store {
     private volatile Memtable memtable;
     private volatile WriteAheadLog wal;
     private final Throttler throttler;
+    private final Snapshots snapshots;
 
     public Ldb(String dir) {
         this(dir, Config.defaultConfig());
@@ -32,9 +33,10 @@ public class Ldb implements Store {
         this.dir = dir;
         this.manifest = new Manifest(dir);
         this.levels = new Levels(dir, config, manifest);
-        WriteAheadLog.replayExistingOnStartup(dir, levels.levelZero(), manifest);
+        this.snapshots = new Snapshots(levels.initialSnapshot());
+        WriteAheadLog.replayExistingOnStartup(dir, levels.levelZero(), manifest, snapshots);
         this.wal = new WriteAheadLog(0, dir, manifest);
-        this.compactor = new Compactor(levels, config, manifest);
+        this.compactor = new Compactor(levels, config, manifest, snapshots);
         this.memtable = new Memtable();
         this.throttler = new Throttler(config, () -> levels.getCompactionScore() > 2);
         Segment.resetCache(config.segmentCacheSize);
@@ -70,7 +72,7 @@ public class Ldb implements Store {
             memtable = new Memtable();
 
             LOG.debug("flush segment from memtable for wal {}", oldWal);
-            WriteAheadLog.flushAndDelete(List.of(oldWal), oldMemtable, levels.levelZero(), manifest);
+            WriteAheadLog.flushAndDelete(List.of(oldWal), oldMemtable, levels.levelZero(), manifest, snapshots);
         }
     }
 
@@ -79,6 +81,10 @@ public class Ldb implements Store {
     }
 
     public Optional<String> get(String key) {
+        return get(key, snapshots.current());
+    }
+
+    public Optional<String> get(String key, Snapshot snapshot) {
         assertKeySize(key);
         key = randomize(key);
         if (memtable.contains(key)) {
@@ -86,7 +92,7 @@ public class Ldb implements Store {
             return Optional.of(memtable.get(key));
         }
         final ByteBuffer keyBuf = ByteBuffer.wrap(key.getBytes());
-        return levels.getValue(key, keyBuf);
+        return levels.getValue(key, keyBuf, snapshot);
     }
 
     @Override

@@ -27,7 +27,7 @@ public class WriteAheadLog {
         }
     }
 
-    static void replayExistingOnStartup(String dir, Level levelZero, Manifest manifest) {
+    static void replayExistingOnStartup(String dir, Level levelZero, Manifest manifest, Snapshots snapshots) {
         LinkedList<WriteAheadLog> wals =
                 Arrays.stream(Objects.requireNonNull(new File(dir)
                                 .listFiles((dir1, name) -> name.startsWith("wal"))))
@@ -38,14 +38,16 @@ public class WriteAheadLog {
         if (wals.isEmpty()) return;
         Memtable memtable = new Memtable();
         wals.forEach(wal -> wal.replay(memtable));
-        flushAndDelete(wals, memtable, levelZero, manifest);
+        flushAndDelete(wals, memtable, levelZero, manifest, snapshots);
     }
 
-    static void flushAndDelete(Collection<WriteAheadLog> wals, Memtable memtable, Level levelZero, Manifest manifest) {
+    static void flushAndDelete(Collection<WriteAheadLog> wals, Memtable memtable, Level levelZero, Manifest manifest, Snapshots snapshots) {
         wals.forEach(WriteAheadLog::stop);
         if (memtable.size() > 0) {
             List<Segment> segmentsCreated = levelZero.flushMemtable(memtable);
-            manifest.record(segmentsCreated, List.of());
+            final List<Segment> segmentsDeleted = List.of();
+            manifest.record(segmentsCreated, segmentsDeleted);
+            snapshots.updateCurrent(segmentsCreated, segmentsDeleted);
         }
         wals.forEach(WriteAheadLog::delete);
     }

@@ -145,6 +145,10 @@ public class Segment {
         }
     }
 
+    public boolean belongsTo(Level level) {
+        return fileName.startsWith(level.dirPathName());
+    }
+
     class SegmentWriter {
         private final DataOutputStream os;
         private int offset = 0;

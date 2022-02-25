@@ -4,10 +4,7 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.lang.String.format;
@@ -39,7 +36,7 @@ enum LevelType {
         }
 
         @Override
-        public Optional<String> getValue(String key, ByteBuffer keyBuf, ConcurrentSkipListMap<Object, Segment> segments) {
+        public Optional<String> getValue(String key, ByteBuffer keyBuf, NavigableMap<Object, Segment> segments) {
             for (Segment segment : segments.values()) {
                 if (!segment.isKeyInRange(key)) continue;
                 Optional<String> value = getValueSafely(key, keyBuf, segment);
@@ -78,52 +75,11 @@ enum LevelType {
         }
 
         @Override
-        public Optional<String> getValue(String key, ByteBuffer keyBuf, ConcurrentSkipListMap<Object, Segment> segments) {
-            for (Segment segment : segments.values()) {
-                if (!segment.isKeyInRange(key)) continue;
-                Optional<String> value = getValueSafely(key, keyBuf, segment);
-                if (value.isPresent()) return value;
-            }
-            return Optional.empty();
-
-/*
+        public Optional<String> getValue(String key, ByteBuffer keyBuf, NavigableMap<Object, Segment> segments) {
             Map.Entry<Object, Segment> segmentEntry = segments.floorEntry(key(key));
             if (segmentEntry == null) return Optional.empty();
             Segment segment = segmentEntry.getValue();
-            final Optional<String> v = getValueSafely(key, keyBuf, segment);
-//                if (v.isEmpty())
-            //System.out.println("didn't find value for key: " + key + " in " + segment);
-            return v;
-*/
-
-
-/*                Map.Entry<Object, Segment> segmentEntry = segments.floorEntry(key(key));
-            if (segmentEntry == null) return Optional.empty();
-            Segment barSegment = segmentEntry.getValue();
-            final Optional<String> barV = getValueSafely(key, keyBuf, barSegment);
-
-            Optional<String> fooV = Optional.empty();
-            Segment fooSegment = null;
-            for (Segment segment : segments.values()) {
-                fooSegment = segment;
-                if (!fooSegment.isKeyInRange(key)) continue;
-                fooV = getValueSafely(key, keyBuf, fooSegment);
-                if (fooV.isPresent()) {
-                    fooSegment = segment;
-                    break;
-                }
-            }
-
-            if (!fooV.equals(barV)) {
-                System.out.println("fooV " + fooV);
-                System.out.println("barV " + barV);
-                System.out.println("fooSegment " + fooSegment);
-                System.out.println("barSegment " + barSegment);
-                System.out.println(segments);
-                throw new RuntimeException();
-            }
-
-            return fooV;*/
+            return getValueSafely(key, keyBuf, segment);
         }
 
         private Object key(String key) {
@@ -148,6 +104,10 @@ enum LevelType {
         return num == 0 ? LEVEL_0 : LEVEL_N;
     }
 
+    public static LevelType of(Level level) {
+        return of(level.getNum());
+    }
+
     public abstract Comparator<Object> comparator();
 
     public abstract Object key(Segment segment);
@@ -156,22 +116,19 @@ enum LevelType {
 
     public abstract double getCompactionScore(List<Segment> segmentsNotBeingCompacted, Config config, Level level);
 
-    public abstract Optional<String> getValue(String key, ByteBuffer keyBuf, ConcurrentSkipListMap<Object, Segment> segments);
+    public abstract Optional<String> getValue(String key, ByteBuffer keyBuf, NavigableMap<Object, Segment> segments);
 
     private static Optional<String> getValueSafely(String key, ByteBuffer keyBuf, Segment segment) {
         try {
-            Optional<String> value = segment.get(key, keyBuf);
-            if (value.isPresent()) {
-                return value;
-            }
+            return segment.get(key, keyBuf);
         } catch (RuntimeException e) {
             if (hasCause(e, FileNotFoundException.class)) {
                 Level.LOG.error("ignoring error in Segment.get(), which is caused by concurrent deletion of segment {} during compaction, there will be a higher segment present with the required data", segment, e);
+                return Optional.empty();
             } else {
                 throw e;
             }
         }
-        return Optional.empty();
     }
 
 }
