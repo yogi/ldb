@@ -8,7 +8,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 import static java.lang.String.format;
-import static org.apache.commons.lang3.exception.ExceptionUtils.hasCause;
 import static store.ldb.StringUtils.isGreaterThan;
 import static store.ldb.Utils.roundTo;
 import static store.ldb.Utils.shouldNotGetHere;
@@ -122,8 +121,8 @@ enum LevelType {
         try {
             return segment.get(key, keyBuf);
         } catch (RuntimeException e) {
-            if (hasCause(e, FileNotFoundException.class)) {
-                Level.LOG.error("ignoring error in Segment.get(), which is caused by concurrent deletion of segment {} during compaction, there will be a higher segment present with the required data", segment, e);
+            if (e.getCause().getCause() instanceof FileNotFoundException) {
+                Level.LOG.error("ignoring error in Segment.get(), which is caused by concurrent deletion of segment {} during compaction, there will be a higher segment present with the required data", segment);
                 return Optional.empty();
             } else {
                 throw e;

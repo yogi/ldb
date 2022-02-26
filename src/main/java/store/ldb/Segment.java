@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutionException;
@@ -75,13 +76,10 @@ public class Segment {
                 .weigher((Weigher<Segment, ByteBuffer>) (segment, buf) -> segment.metadata.blockDataLength())
                 .recordStats()
                 .build(CacheLoader.from(segment -> {
-                    try (BufferedInputStream is = new BufferedInputStream(new FileInputStream(segment.fileName))) {
-                        byte[] bytes = new byte[segment.metadata.blockDataLength()];
-                        int read = is.read(bytes);
-                        if (read != bytes.length) {
-                            throw new IOException(format("read %d bytes vs %d for %s", read, bytes.length, segment));
-                        }
-                        return ByteBuffer.wrap(bytes);
+                    try (FileChannel readChannel = new FileInputStream(segment.fileName).getChannel()) {
+                        return readChannel.map(FileChannel.MapMode.READ_ONLY,
+                                0,                   // position
+                                readChannel.size());
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
@@ -267,7 +265,7 @@ public class Segment {
 
     public ByteBuffer getData() {
         try {
-            return dataCache.get(this);
+            return dataCache.get(this).duplicate();
         } catch (ExecutionException e) {
             throw new RuntimeException(e);
         }

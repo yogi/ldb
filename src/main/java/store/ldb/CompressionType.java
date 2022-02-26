@@ -6,12 +6,18 @@ import net.jpountz.lz4.LZ4FastDecompressor;
 import org.xerial.snappy.Snappy;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import static java.lang.String.format;
 
 public enum CompressionType {
     NONE((byte) 1) {
+        @Override
+        public ByteBuffer uncompress(ByteBuffer buf) {
+            return buf;
+        }
+
         @Override
         public byte[] uncompress(byte[] bytes) {
             return bytes;
@@ -23,6 +29,11 @@ public enum CompressionType {
         }
     },
     SNAPPY((byte) 2) {
+        @Override
+        public ByteBuffer uncompress(ByteBuffer buf) {
+            throw new UnsupportedOperationException("todo");
+        }
+
         @Override
         public byte[] uncompress(byte[] bytes) {
             try {
@@ -45,6 +56,11 @@ public enum CompressionType {
         private final LZ4Factory factory = LZ4Factory.fastestJavaInstance();
 
         @Override
+        public ByteBuffer uncompress(ByteBuffer buf) {
+            throw new UnsupportedOperationException("todo");
+        }
+
+        @Override
         public byte[] uncompress(byte[] compressed) {
             final LZ4FastDecompressor decompressor = factory.fastDecompressor();
             int ch1 = compressed[0];
@@ -64,10 +80,10 @@ public enum CompressionType {
         public byte[] compress(byte[] uncompressed) {
             final LZ4Compressor compressor = factory.fastCompressor();
             byte[] compressed = new byte[compressor.maxCompressedLength(uncompressed.length) + 4];
-            compressed[0] = (byte)(uncompressed.length >>> 24);
-            compressed[1] = (byte)(uncompressed.length >>> 16);
-            compressed[2] = (byte)(uncompressed.length >>>  8);
-            compressed[3] = (byte)(uncompressed.length >>>  0);
+            compressed[0] = (byte) (uncompressed.length >>> 24);
+            compressed[1] = (byte) (uncompressed.length >>> 16);
+            compressed[2] = (byte) (uncompressed.length >>> 8);
+            compressed[3] = (byte) (uncompressed.length >>> 0);
             int compressedSize = compressor.compress(uncompressed, 0, uncompressed.length, compressed, 4, compressed.length - 4);
             return Arrays.copyOf(compressed, compressedSize + 4);
         }
@@ -94,4 +110,6 @@ public enum CompressionType {
     public abstract byte[] uncompress(byte[] bytes);
 
     public abstract byte[] compress(byte[] bytes);
+
+    public abstract ByteBuffer uncompress(ByteBuffer buf);
 }

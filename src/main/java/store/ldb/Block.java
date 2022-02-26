@@ -81,8 +81,8 @@ class Block {
 
     public Optional<String> get(String key, ByteBuffer keyBuf) {
         try {
-            ByteBuffer blockBytes = ByteBuffer.wrap(uncompress());
-            while(blockBytes.hasRemaining()) {
+            ByteBuffer blockBytes = uncompress();
+            while (blockBytes.hasRemaining()) {
                 Optional<KeyValueEntry> entry = KeyValueEntry.getIfMatches(blockBytes, keyBuf);
                 if (entry.isPresent()) {
                     return Optional.of(entry.get().getValue());
@@ -95,10 +95,11 @@ class Block {
     }
 
     public List<KeyValueEntry> loadAllEntries() {
-        try (DataInputStream is = new DataInputStream(new ByteArrayInputStream(uncompress()))) {
+        try {
+            final ByteBuffer buf = uncompress();
             List<KeyValueEntry> entries = new ArrayList<>();
-            while (is.available() > 0) {
-                entries.add(KeyValueEntry.readFrom(is));
+            while (buf.hasRemaining()) {
+                entries.add(KeyValueEntry.readFrom(buf));
             }
             return entries;
         } catch (IOException e) {
@@ -106,19 +107,9 @@ class Block {
         }
     }
 
-    private byte[] uncompress() throws IOException {
-        try (DataInputStream is = new DataInputStream(new BufferedInputStream(new ByteArrayInputStream(segment.getData().array())))) {
-            long read = is.skip(offset);
-            if (read != offset) {
-                throw new IOException(format("skipped %d bytes vs %d for block %s", read, offset, this));
-            }
-            byte[] bytes = new byte[length];
-            read = is.read(bytes);
-            if (read != length) {
-                throw new IOException(format("read %d bytes vs %d for block %s", read, length, this));
-            }
-            return compressionType.uncompress(bytes);
-        }
+    private ByteBuffer uncompress() throws IOException {
+        final ByteBuffer buf = segment.getData();
+        return compressionType.uncompress(buf.slice(offset, length));
     }
 
     @Override
