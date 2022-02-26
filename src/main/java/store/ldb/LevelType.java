@@ -121,8 +121,9 @@ enum LevelType {
         try {
             return segment.get(key, keyBuf);
         } catch (RuntimeException e) {
-            if (e.getCause().getCause() instanceof FileNotFoundException) {
-                Level.LOG.error("ignoring error in Segment.get(), which is caused by concurrent deletion of segment {} during compaction, there will be a higher segment present with the required data", segment);
+            if (e.getCause() != null && e.getCause().getCause() instanceof FileNotFoundException) {
+                // ignore error, there will be a higher level segment with the required data
+                Level.LOG.error("ignoring error when trying to read a segment which was deleted {}; {}", segment, e.getCause().getCause().getMessage());
                 return Optional.empty();
             } else {
                 throw e;

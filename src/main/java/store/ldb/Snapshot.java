@@ -53,7 +53,8 @@ public class Snapshot {
     }
 
     public void release() {
-        if (users.decrementAndGet() == 0) {
+        if (users.decrementAndGet() == 0 ) {
+            if (deletedSegments == null || deletedSegments.isEmpty()) return;
             LOG.debug("releasing snapshot and deleting {} segments {}", deletedSegments.size(), deletedSegments);
             for (Segment segment : deletedSegments) {
                 for (Level level : levelToSegmentsMap.keySet()) {
