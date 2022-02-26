@@ -81,7 +81,12 @@ public class Ldb implements Store {
     }
 
     public Optional<String> get(String key) {
-        return get(key, snapshots.current());
+        final Snapshot snapshot = snapshots.acquireCurrent();
+        try {
+            return get(key, snapshot);
+        } finally {
+            snapshot.release();
+        }
     }
 
     public Optional<String> get(String key, Snapshot snapshot) {

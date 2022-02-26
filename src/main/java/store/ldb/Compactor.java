@@ -131,10 +131,10 @@ public class Compactor {
             } else {
                 compactSegments(toBeCompacted, newlyCreated, nextLevel, stats);
             }
+
             manifest.record(newlyCreated, toBeCompacted);
             snapshots.updateCurrent(newlyCreated, toBeCompacted);
-            fromSegments.forEach(level::removeSegment);
-            overlappingSegments.forEach(nextLevel::removeSegment);
+
             final long timeTaken = System.currentTimeMillis() - start;
             LOG.debug("compacted level{}: {} + {} => {}, {}KB in {} ms - keys {} => {} - min {}, max {}",
                     level.getNum(), fromSegments.size(), overlappingSegments.size(), stats.segmentsCreated, Utils.roundTo(stats.bytesWritten / 1024.0, 2), timeTaken, stats.keysRead, stats.keysWritten, abbreviate(minKey, 15), abbreviate(maxKey, 15));
