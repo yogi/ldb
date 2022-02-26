@@ -32,7 +32,7 @@ public class Config {
                 withMaxSegmentSize(2 * MB).
                 withSegmentCacheSize(100 * MB).
                 withLevelCompactionThreshold(level -> level.getNum() == 0 ? 4 : (int) Math.pow(5, level.getNum())).
-                withNumLevels(6).
+                withNumLevels(7).
                 withRandomizedKeys(true).
                 withMaxBlockSize(100 * KB * compressionFactorEstimate).
                 withMaxWalSize(4 * MB * config.memtablePartitions * compressionFactorEstimate).

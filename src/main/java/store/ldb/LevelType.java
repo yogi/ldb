@@ -69,7 +69,7 @@ enum LevelType {
             for (Segment segment : segmentsNotBeingCompacted) {
                 totalBytes += segment.totalBytes();
             }
-            double thresholdBytes = config.levelCompactionThreshold.apply(level) * config.maxSegmentSize;
+            double thresholdBytes = ((long) config.levelCompactionThreshold.apply(level)) * config.maxSegmentSize;
             final double score = (double) totalBytes / thresholdBytes;
             return roundTo(score, 3);
         }
