@@ -19,7 +19,7 @@ public class Level {
     private final File dir;
     private final int num;
     private final Config config;
-    final ConcurrentSkipListMap<Object, Segment> segments;
+    private final ConcurrentSkipListMap<Object, Segment> segments;
     private final AtomicInteger nextSegmentNumber;
     private final LevelType levelType;
     private String maxCompactedKey;
@@ -75,8 +75,8 @@ public class Level {
         return dir + File.separatorChar + "level" + num;
     }
 
-    public Optional<String> get(String key, ByteBuffer keyBuf, Snapshot snapshot) {
-        return levelType.getValue(key, keyBuf, snapshot.segmentsOf(this));
+    public Optional<String> get(String key, ByteBuffer keyBuf) {
+        return levelType.getValue(key, keyBuf, segments);
     }
 
     public List<Segment> flushMemtable(Memtable memtable) {

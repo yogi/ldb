@@ -36,9 +36,9 @@ public class Levels {
         return levelCompactors;
     }
 
-    public Optional<String> getValue(String key, ByteBuffer keyBuf, Snapshot snapshot) {
+    public Optional<String> getValue(String key, ByteBuffer keyBuf) {
         for (Level level : levels.values()) {
-            Optional<String> value = level.get(key, keyBuf, snapshot);
+            Optional<String> value = level.get(key, keyBuf);
             if (value.isPresent()) {
                 return value;
             }
@@ -56,13 +56,5 @@ public class Levels {
 
     public void addStats(Map<String, Object> stats) {
         levels.values().forEach(level -> level.addStats(stats));
-    }
-
-    public Snapshot initialSnapshot() {
-        Map<Level, NavigableMap<Object, Segment>> levelToSegmentsMap = new ConcurrentHashMap<>();
-        levels.forEach((num, level) -> {
-            levelToSegmentsMap.put(level, new ConcurrentSkipListMap<>(level.segments));
-        });
-        return new Snapshot(levelToSegmentsMap);
     }
 }

@@ -13,14 +13,12 @@ public class Compactor {
     public static final Logger LOG = LoggerFactory.getLogger(Compactor.class);
 
     private final Config config;
-    private final Snapshots snapshots;
     private final Thread compactionThread;
     private final List<LevelCompactor> levelCompactors;
     private final AtomicBoolean stop = new AtomicBoolean();
 
-    public Compactor(Levels levels, Config config, Manifest manifest, Snapshots snapshots) {
+    public Compactor(Levels levels, Config config, Manifest manifest) {
         this.config = config;
-        this.snapshots = snapshots;
         this.levelCompactors = levels.createCompactors(config, manifest);
         this.compactionThread = new Thread(this::prioritize, "compaction");
     }
@@ -36,7 +34,7 @@ public class Compactor {
                 final Optional<LevelCompactor> lc = pickCompactor();
                 lc.ifPresent(levelCompactor -> {
                     try {
-                        levelCompactor.runCompaction(snapshots);
+                        levelCompactor.runCompaction();
                     } catch (Exception e) {
                         LOG.error("caught exception in runCompaction, exiting: ", e);
                         System.exit(1);
@@ -65,7 +63,7 @@ public class Compactor {
     }
 
     public void runCompaction(int levelNum) {
-        levelCompactors.get(levelNum).runCompaction(snapshots);
+        levelCompactors.get(levelNum).runCompaction();
     }
 
     public void stop() {
@@ -103,7 +101,7 @@ public class Compactor {
             this.manifest = manifest;
         }
 
-        public void runCompaction(Snapshots snapshots) {
+        public void runCompaction() {
             final List<Segment> fromSegments;
             final List<Segment> overlappingSegments;
             List<Segment> toBeCompacted;
@@ -131,10 +129,9 @@ public class Compactor {
             } else {
                 compactSegments(toBeCompacted, newlyCreated, nextLevel, stats);
             }
-
             manifest.record(newlyCreated, toBeCompacted);
-            snapshots.updateCurrent(newlyCreated, toBeCompacted);
-
+            fromSegments.forEach(level::removeSegment);
+            overlappingSegments.forEach(nextLevel::removeSegment);
             final long timeTaken = System.currentTimeMillis() - start;
             LOG.debug("compacted level{}: {} + {} => {}, {}KB in {} ms - keys {} => {} - min {}, max {}",
                     level.getNum(), fromSegments.size(), overlappingSegments.size(), stats.segmentsCreated, Utils.roundTo(stats.bytesWritten / 1024.0, 2), timeTaken, stats.keysRead, stats.keysWritten, abbreviate(minKey, 15), abbreviate(maxKey, 15));
