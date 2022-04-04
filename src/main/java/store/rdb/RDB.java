@@ -17,6 +17,7 @@ public class RDB implements store.Store {
 
         List<Integer> wals = walGenerations(dir);
         if (wals.isEmpty()) {
+            wal = new WriteAheadLog(dir, 0);
             return;
         }
 
