@@ -37,7 +37,7 @@ public class Config {
                 withMaxBlockSize(100 * KB * compressionFactorEstimate).
                 withMaxWalSize(4 * MB * config.memtablePartitions * compressionFactorEstimate).
                 withSleepBetweenCompactionsMs(1).
-                withEnableThrottling(false)
+                withEnableThrottling(true)
                 ;
     }
 
