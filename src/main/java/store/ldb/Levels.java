@@ -2,8 +2,6 @@ package store.ldb;
 
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListMap;
 
 public class Levels {
     private final TreeMap<Integer, Level> levels;

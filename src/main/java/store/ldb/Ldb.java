@@ -6,7 +6,10 @@ import org.slf4j.LoggerFactory;
 import store.Store;
 
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
@@ -20,7 +23,9 @@ public class Ldb implements Store {
     public final Config config;
     private final Compactor compactor;
     private volatile Memtable memtable;
+    private volatile Memtable oldMemtable;
     private volatile WriteAheadLog wal;
+    private volatile WriteAheadLog oldWal;
     private final Throttler throttler;
 
     public Ldb(String dir) {
@@ -56,14 +61,15 @@ public class Ldb implements Store {
         throttler.throttle();
         assertKeySize(key);
         assertValueSize(value);
+
         key = randomize(key);
         wal.append(new SetCmd(key, value));
         memtable.put(key, value);
 
         // flush memtable
         if (wal.totalBytes() >= config.maxWalSize) {
-            WriteAheadLog oldWal = wal;
-            Memtable oldMemtable = memtable;
+            oldWal = wal;
+            oldMemtable = memtable;
 
             LOG.debug("wal threshold crossed, init new wal and memtable before flushing old one {}", oldWal);
             wal = wal.startNext();
@@ -71,6 +77,9 @@ public class Ldb implements Store {
 
             LOG.debug("flush segment from memtable for wal {}", oldWal);
             WriteAheadLog.flushAndDelete(List.of(oldWal), oldMemtable, levels.levelZero(), manifest);
+
+            oldWal = null;
+            oldMemtable = null;
         }
     }
 
@@ -81,10 +90,25 @@ public class Ldb implements Store {
     public Optional<String> get(String key) {
         assertKeySize(key);
         key = randomize(key);
+
+        // check memtable first
         if (memtable.contains(key)) {
             LOG.debug("get found {} in memtable", key);
             return Optional.of(memtable.get(key));
         }
+
+        // check the old memtable if a flush is in progress
+        try {
+            if (oldMemtable != null && oldMemtable.contains(key)) {
+                LOG.debug("get found {} in old memtable", key);
+                return Optional.of(oldMemtable.get(key));
+            }
+        } catch (NullPointerException e) {
+            // ignore this exception, it can happen if oldMemtable is set to null after the null-check but before the contains() call
+            LOG.info("safely ignoring NPE in get() because oldMemtable was null");
+        }
+
+        // ask the levels finally
         final ByteBuffer keyBuf = ByteBuffer.wrap(key.getBytes());
         return levels.getValue(key, keyBuf);
     }
