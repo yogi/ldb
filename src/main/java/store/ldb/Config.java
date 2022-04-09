@@ -2,7 +2,6 @@ package store.ldb;
 
 import java.util.List;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 import static store.ldb.CompressionType.*;
 

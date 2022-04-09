@@ -111,7 +111,7 @@ public class KeyValueEntry {
             lastFlushTime = System.currentTimeMillis();
             flushCount.incrementAndGet();
             os.flush();
-            // following can be used to actually write to disk vs only the OS buffer cache
+            // following can be used to force write to disk vs only the OS buffer cache
             // if (fsync) {
             //    fos.getFD().sync();
             // }
