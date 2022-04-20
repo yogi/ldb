@@ -53,7 +53,7 @@ Install [wrk](https://github.com/wg/wrk)
 `$ wrk -t4 -c100 -d10m -s get.lua http://localhost:8080/ --latency -- fixedSeed 1000000000`
 
 ### Design
-![](/Users/yogik/dev/bigo/ldb.jpg)
+![](ldb.jpg)
 
 ##### Set request flow:
 1. set(key, value) method called on LDB 
